@@ -1,0 +1,7 @@
+services:
+  eduard-frontend:
+    build: .
+    container_name: eduard-web
+    ports:
+      - "8080:80"
+    restart: unless-stopped
