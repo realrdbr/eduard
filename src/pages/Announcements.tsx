@@ -126,10 +126,7 @@ const handleCreateAnnouncement = async () => {
           targetClass: userClass || null,
           targetPermissionLevel: 1,
         },
-        userProfile: {
-          permission_lvl: profile?.permission_lvl || 1,
-          name: (profile as any)?.name || (profile as any)?.username || 'Unbekannt',
-        }
+        sessionId
       }
     });
 

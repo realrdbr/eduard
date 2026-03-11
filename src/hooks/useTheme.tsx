@@ -194,6 +194,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     try {
+      // Set session context so RLS can resolve the current user
+      if (sessionId) {
+        await supabase.rpc('set_session_context', { session_id_param: sessionId });
+      }
+
       const { data, error } = await supabase
         .from('user_themes')
         .select('*')

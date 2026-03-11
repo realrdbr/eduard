@@ -34,7 +34,7 @@ interface SubstitutionPlan {
 }
 
 const AIVertretungsGenerator = ({ onGenerated }: AIVertretungsGeneratorProps) => {
-  const { profile } = useAuth();
+  const { profile, sessionId } = useAuth();
   const { toast } = useToast();
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState('');
@@ -169,11 +169,7 @@ const AIVertretungsGenerator = ({ onGenerated }: AIVertretungsGeneratorProps) =>
             teacherName: selectedTeacher,
             date: targetDate
           },
-          userProfile: {
-            user_id: profile?.id,
-            name: profile?.name || profile?.username,
-            permission_lvl: profile?.permission_lvl
-          }
+          sessionId
         }
       });
 

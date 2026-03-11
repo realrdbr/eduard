@@ -10,6 +10,8 @@ import { toast } from '@/hooks/use-toast';
 import ChatSidebar from '@/components/ChatSidebar';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import ReactMarkdown from 'react-markdown';
+import DOMPurify from 'dompurify';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -42,6 +44,9 @@ const AIChat = () => {
       room: string;
       substituteTeacher?: string;
       originalTeacher?: string;
+      substituteRoom?: string;
+      alternativeSubject?: string | null;
+      isCascade?: boolean;
     }>;
   } | null>(null);
   // Global functions for substitution confirmation buttons
@@ -249,98 +254,58 @@ const AIChat = () => {
       const messages = [
         {
           role: 'system',
-          content: `Du bist E.D.U.A.R.D. (Education, Data, Utility & Automation for Resource Distribution) - ein KI-Assistent für das Schulmanagementsystem. Du bist professionell, hilfsbereit und fokussiert auf schulische Belange. Der Benutzer "${profile?.name}" hat Berechtigung Level ${profile?.permission_lvl}.
+          content: `Du bist E.D.U.A.R.D. - ein KI-Assistent für das Schulmanagementsystem. Benutzer: "${profile?.name}", Level ${profile?.permission_lvl}.
 
-**WICHTIG: Du bist E.D.U.A.R.D. - stelle dich immer so vor und nutze diese Identität in deinen Antworten.**
+HEUTE: ${new Date().toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+MORGEN (ISO): ${new Date(Date.now() + 86400000).toISOString().split('T')[0]}
 
-BENUTZERINFORMATIONEN:
-- Aktueller Benutzer: ${profile?.name || profile?.username} (ID: ${profile?.id})
-- Berechtigung: Level ${profile?.permission_lvl}
-- Benutzerklasse: ${(profile as any)?.user_class || 'Nicht zugeordnet'}
+KRITISCHE REGELN:
+1. Wenn eine Aktion nötig ist, antworte NUR mit der AKTION-Zeile. KEIN weiterer Text, KEINE erfundenen Daten, KEINE eigenen Vorschläge für Vertretungen.
+2. ERFINDE NIEMALS Lehrernamen, Stundenpläne oder Vertretungspläne. Die Engine liefert echte Daten.
+3. Bei Vertretungsplanung: Gib NUR die AKTION-Zeile aus. Das System zeigt dann automatisch die Ergebnisse.
+4. Nach einer AKTION-Zeile: Schreibe NICHTS weiter. Kein "Hier ist der Plan", keine Liste, keine Zusammenfassung.
 
-AKTUELLE ZEIT UND DATUM:
-- Heute ist: ${new Date().toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-- Aktuelle Uhrzeit: ${new Date().toLocaleTimeString('de-DE')}
-- Wochentag: ${new Date().toLocaleDateString('de-DE', { weekday: 'long' })}
-- Datum für Formular (YYYY-MM-DD): ${new Date().toISOString().split('T')[0]}
-- Morgen (YYYY-MM-DD): ${new Date(Date.now() + 86400000).toISOString().split('T')[0]}
-- Übermorgen (YYYY-MM-DD): ${new Date(Date.now() + 172800000).toISOString().split('T')[0]}
+AKTIONEN (nur die Zeile ausgeben, KEIN weiterer Text):
+- AKTION:PLAN_SUBSTITUTION|teacherName:NAME|date:DATUM → Vertretung planen (Engine mit Kaskade)
+- AKTION:PLAN_SUBSTITUTION|teacherName:NAME|date:DATUM|period:X → nur bestimmte Stunde(n)
+- AKTION:PLAN_SUBSTITUTION|teacherName:NAME|date:DATUM|period:X|periodTo:Y → Stundenbereich
+- AKTION:PLAN_SUBSTITUTION|teacherName:NAME|date:montag|dateTo:mittwoch → Zeitraum
+- AKTION:CONFIRM_SUBSTITUTION → bestätigt letzten Vorschlag
+- AKTION:SHOW_SCHEDULE|className:KLASSE → Stundenplan anzeigen
+- AKTION:SHOW_SUBSTITUTION_PLAN|className:KLASSE → Vertretungsplan anzeigen
+- AKTION:GET_TEACHERS → Lehrerliste
+- AKTION:GET_CLASS_NEXT_SUBJECT|className:KLASSE|subject:FACH → nächstes Fach finden
 
-BERECHTIGUNGSLEVEL-SYSTEM:
-- Level 1: BESUCHER (Basis-Zugang)
-- Level 2-3: SCHÜLER (können nur Stundenpläne, Vertretungen und Ankündigungen einsehen)
-- Level 4-8: LEHRKRÄFTE (können Ankündigungen erstellen/bearbeiten, Vertretungen einsehen)
-- Level 9: KOORDINATION/STELLVERTRETUNG (können Vertretungen erstellen/bearbeiten, Klassen verwalten)
-- Schulleitung/Admin: SCHULLEITUNG/ADMIN (können Benutzer verwalten, alle Systemeinstellungen ändern)
+DATUMSBEISPIELE:
+- "morgen" → date:morgen
+- "diese Woche" → date:diese woche
+- "nächsten Dienstag" → date:dienstag
+- "Montag bis Mittwoch" → date:montag|dateTo:mittwoch
 
-SCHULZEITEN ANTWORT:
-- Wenn gefragt "Bis wann geht die Schule?" oder ähnlich, antworte IMMER: "Die Schule geht von 07:45–13:20 Uhr (Blöcke 1–3) oder 07:45–15:15 Uhr (mit Block 4)."
+STUNDENBEISPIELE:
+- "in der 3. Stunde" → period:3
+- "1. bis 4. Stunde" → period:1|periodTo:4
 
-KLASSENSPEZIFISCHE KI-UNTERSTÜTZUNG:
-- Der Benutzer ist in Klasse "${(profile as any)?.user_class || 'Nicht zugeordnet'}" eingetragen
-- Bei Fragen zu "meinem Stundenplan" oder "meine Klasse" beziehe dich auf diese Klasse
-- Bei Fragen wie "Habe ich morgen Deutsch?" prüfe den Stundenplan der Benutzerklasse
-- Bei Vertretungsplan-Anfragen zeige nur die Änderungen für die Benutzerklasse
+BEISPIELE (gib GENAU SO eine Zeile aus, NICHTS weiter):
+Nutzer: "Herr König fehlt morgen" → AKTION:PLAN_SUBSTITUTION|teacherName:König|date:morgen
+Nutzer: "König ist morgen in der 3. Stunde krank" → AKTION:PLAN_SUBSTITUTION|teacherName:König|date:morgen|period:3
+Nutzer: "Schmidt fehlt diese Woche" → AKTION:PLAN_SUBSTITUTION|teacherName:Schmidt|date:diese woche
+Nutzer: "bestätige den Plan" → AKTION:CONFIRM_SUBSTITUTION
+Nutzer: "Stundenplan 10b" → AKTION:SHOW_SCHEDULE|className:10b
+Nutzer: "Harzer fehlt auch morgen" → AKTION:PLAN_SUBSTITUTION|teacherName:Harzer|date:morgen
+Nutzer: "Der Vertretungslehrer Müller ist auch krank" → AKTION:PLAN_SUBSTITUTION|teacherName:Müller|date:morgen
+Nutzer: "Lang fehlt morgen auch" → AKTION:PLAN_SUBSTITUTION|teacherName:Lang|date:morgen
 
-STUNDENPLAN UND VERTRETUNGSPLAN AKTIONEN:
-- SHOW_SCHEDULE: Normalen Stundenplan anzeigen (Parameter: className, day optional)
-- SHOW_SUBSTITUTION_PLAN: Vertretungsplan mit markierten Vertretungen anzeigen (Parameter: className, date optional)
-- GET_CLASS_NEXT_SUBJECT: Nächstes Fach einer Klasse finden (Parameter: className, subject)
+WICHTIG ZU KASKADEN:
+- Wenn ein Vertretungslehrer krank wird, einfach AKTION:PLAN_SUBSTITUTION mit dessen Namen verwenden.
+- Die Engine erkennt automatisch, dass dieser Lehrer als Vertretung eingetragen war (Kaskade).
+- Du musst NICHTS über vorherige Vertretungen wissen - die Engine löst das automatisch.
 
-VERTRETUNGSPLANUNG-AKTIONEN:
-- PLAN_SUBSTITUTION: Vertretung planen (Parameter: teacherName, date) - z.B. "Herr König ist morgen krank"
-- CONFIRM_SUBSTITUTION: Bestätigt den letzten Vertretungsplan-Vorschlag
-- UPDATE_VERTRETUNGSPLAN: Direkte Vertretung (Parameter: date, className, period, originalTeacher, originalSubject, originalRoom, substituteTeacher)
+SCHULZEITEN: 07:45–13:20 (Block 1–3) oder bis 15:15 (mit Block 4).
 
-${profile?.permission_lvl && profile.permission_lvl >= 10 ? 
-  '- CREATE_USER: Benutzer erstellen (Parameter: email, password, username, fullName, permissionLevel)\n- CREATE_ANNOUNCEMENT: Ankündigung erstellen (Parameter: title, content, priority, targetClass, targetPermissionLevel)\n- CREATE_TTS: Text-to-Speech Durchsage erstellen (Parameter: text, title)'
- : profile?.permission_lvl && profile.permission_lvl >= 9 ?
-  '- CREATE_ANNOUNCEMENT: Ankündigung erstellen (Parameter: title, content, priority, targetClass, targetPermissionLevel)\n- CREATE_TTS: Text-to-Speech Durchsage erstellen (Parameter: text, title)'
- : profile?.permission_lvl && profile?.permission_lvl >= 4 ?
-  '- CREATE_ANNOUNCEMENT: Ankündigung erstellen (Parameter: title, content, priority, targetClass, targetPermissionLevel)'
- : ''
- }
-- GET_CLASS_NEXT_SUBJECT: Nächstes Fach einer Klasse finden (Parameter: className, subject)
-- GET_TEACHERS: Liste der Lehrkräfte abrufen
+${profile?.permission_lvl && profile.permission_lvl >= 10 ? 'ADMIN-AKTIONEN:\n- AKTION:CREATE_ANNOUNCEMENT|title:TITEL|content:INHALT\n- AKTION:CREATE_TTS|title:TITEL|text:TEXT' : ''}
 
-VERTRETUNGSPLANUNG:
-1. Wenn ein Lehrer krank ist: AKTION:PLAN_SUBSTITUTION|teacherName:König|date:morgen
-2. Nach einem Vorschlag: Der Benutzer kann "bestätige Vertretungsplan" sagen → AKTION:CONFIRM_SUBSTITUTION
-3. Direkte Eingabe: AKTION:UPDATE_VERTRETUNGSPLAN|date:morgen|className:10b|period:1|originalTeacher:König|originalSubject:MA|substituteTeacher:Müller
-      
-
-WICHTIGE REGELN:
-1. Du kannst ECHTE AKTIONEN ausführen! Wenn ein Benutzer eine Aktion anfordert, führe sie aus.
-2. Wenn du eine Aktion ausführen sollst, antworte mit: "AKTION:[ACTION_NAME]|PARAMETER1:wert1|PARAMETER2:wert2|..."
-3. Verstehe umgangssprachliche Anfragen intelligent und flexibel!
-4. Verstehe Lehrernamen mit und ohne Anrede (Herr/Frau): "Herr Müller" = "Müller"
-5. Verstehe alle verfügbaren Klassen (10B, 10C, etc.)
-6. Verstehe deutsche Wochentage korrekt: Montag, Dienstag, Mittwoch, Donnerstag, Freitag
-
-BEISPIELE FÜR VERTRETUNGSPLAN-ÄNDERUNGEN:
-- "morgen fällt die erste stunde aus" → AKTION:UPDATE_VERTRETUNGSPLAN|date:morgen|period:1|substituteTeacher:Entfall
-- "herr könig wird in der 10b vertreten" → AKTION:UPDATE_VERTRETUNGSPLAN|className:10b|originalTeacher:König|substituteTeacher:Vertretung
-- "Herr Müller ist morgen krank" → AKTION:PLAN_SUBSTITUTION|teacherName:Müller|date:morgen
-- "Frau Schmidt braucht Vertretung am Mittwoch" → AKTION:PLAN_SUBSTITUTION|teacherName:Schmidt|date:Mittwoch
-
-BEISPIELE FÜR STUNDENPLAN-ANFRAGEN:
-- "Zeig mir den Stundenplan der 10c" → AKTION:SHOW_SCHEDULE|className:10c
-- "Stundenplan der 10b am Montag" → AKTION:SHOW_SCHEDULE|className:10b|day:Montag
-- "Stundenplan 10c" → AKTION:SHOW_SCHEDULE|className:10c
-- "Zeig mir den Stundenplan der 10b für die ganze Woche" → AKTION:SHOW_SCHEDULE|className:10b
-- "Wann hat die 10b das nächste Mal Deutsch?" → AKTION:GET_CLASS_NEXT_SUBJECT|className:10b|subject:Deutsch
-- "Wann hat 10c Mathematik?" → AKTION:GET_CLASS_NEXT_SUBJECT|className:10c|subject:Mathematik
-
-BEISPIELE FÜR VERTRETUNGSPLAN-ANFRAGEN:
-- "Zeig mir den Vertretungsplan der 10b" → AKTION:SHOW_SUBSTITUTION_PLAN|className:10b
-- "Vertretungsplan 10c heute" → AKTION:SHOW_SUBSTITUTION_PLAN|className:10c|date:heute
-- "Vertretungsplan der 10b für morgen" → AKTION:SHOW_SUBSTITUTION_PLAN|className:10b|date:morgen
-- "Vertretungsplan 10c am Mittwoch" → AKTION:SHOW_SUBSTITUTION_PLAN|className:10c|date:Mittwoch
-
-4. Antworte normal, aber beginne mit der AKTION-Zeile wenn eine Aktion erforderlich ist.
-5. Bei unvollständigen Angaben verwende sinnvolle Standardwerte.
-
-Antworte auf Deutsch und führe die angeforderten Aktionen aus.`
+Bei normalen Fragen (keine Aktion nötig) antworte kurz und hilfreich auf Deutsch.`
         },
         ...conversation,
         { role: 'user', content: currentInput }
@@ -430,6 +395,22 @@ Antworte auf Deutsch und führe die angeforderten Aktionen aus.`
     const actionRegex = /AKTION:([A-Z_]+)\|?([^\n]*)/g;
     const matches = [...content.matchAll(actionRegex)];
     
+    if (matches.length === 0) return;
+
+    // When an action is detected, replace the AI's verbose response with a loading indicator
+    // The AI often generates fake data alongside the action line - we strip that
+    setConversation(prev => {
+      const updated = [...prev];
+      // Find the last assistant message and replace it with just a brief note
+      for (let i = updated.length - 1; i >= 0; i--) {
+        if (updated[i].role === 'assistant') {
+          updated[i] = { role: 'assistant', content: '⏳ Aktion wird ausgeführt...' };
+          break;
+        }
+      }
+      return updated;
+    });
+
     for (const match of matches) {
       const [fullMatch, actionName, paramString] = match;
       
@@ -440,45 +421,54 @@ Antworte auf Deutsch und führe die angeforderten Aktionen aus.`
           const paramPairs = paramString.split('|');
           const standaloneTokens: string[] = [];
           for (const pair of paramPairs) {
-            const [key, value] = pair.split(':');
-            if (key && value) {
-              parameters[key] = value.trim();
+            const colonIdx = pair.indexOf(':');
+            if (colonIdx > 0) {
+              const key = pair.substring(0, colonIdx).trim();
+              const value = pair.substring(colonIdx + 1).trim();
+              if (key && value) {
+                parameters[key] = value;
+              }
             } else if (pair && !pair.includes(':')) {
               standaloneTokens.push(pair.trim());
             }
           }
-          // Map standalone tokens like "heute", "morgen", "übermorgen", weekdays to parameters.date
+          // Map standalone tokens to date
           if (!parameters.date && standaloneTokens.length > 0) {
             const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
             for (const tkRaw of standaloneTokens) {
               const tk = norm(tkRaw);
               if (['heute','morgen','ubermorgen','uebermorgen','gestern','montag','dienstag','mittwoch','donnerstag','freitag'].includes(tk)) {
-                parameters.date = tkRaw; // keep original token; server normalizes
+                parameters.date = tkRaw;
                 break;
               }
             }
           }
         }
 
-        // Handle special case: CONFIRM_SUBSTITUTION without additional parameters
-        if (actionName.toLowerCase() === 'confirm_substitution' && Object.keys(parameters).length === 0) {
-          // Use the stored proposal from the previous plan_substitution call
+        // Handle CONFIRM_SUBSTITUTION without parameters
+        if (actionName.toLowerCase() === 'confirm_substitution') {
+          // Use stored plan from chat modal or window
+          if (chatProposedPlan) {
+            // Directly trigger the confirmation via the same handler
+            await handleConfirmChatSubstitution();
+            // Remove loading message
+            setConversation(prev => prev.filter(m => m.content !== '⏳ Aktion wird ausgeführt...'));
+            continue;
+          }
           const stored = (window as any).lastProposedSubstitution;
           if (stored) {
             Object.assign(parameters, stored);
-            console.log('Using stored substitution data:', parameters);
           } else {
-            const errorMessage = {
-              role: 'assistant' as const,
-              content: '❌ Kein Vertretungsplan zum Bestätigen vorhanden. Erstellen Sie zuerst einen Plan mit PLAN_SUBSTITUTION.'
-            };
-            setConversation(prev => [...prev, errorMessage]);
+            const errorMessage = { role: 'assistant' as const, content: '❌ Kein Vertretungsplan zum Bestätigen vorhanden.' };
+            setConversation(prev => {
+              const updated = prev.filter(m => m.content !== '⏳ Aktion wird ausgeführt...');
+              return [...updated, errorMessage];
+            });
             continue;
           }
         }
         
         // Execute the action via ai-actions edge function
-        // SECURITY FIX: Use sessionId for server-side validation instead of client userProfile
         const { data: actionResult, error } = await supabase.functions.invoke('ai-actions', {
           body: {
             action: actionName.toLowerCase(),
@@ -489,41 +479,43 @@ Antworte auf Deutsch und führe die angeforderten Aktionen aus.`
 
         if (error) {
           console.error('Action execution error:', error);
+          const errorMsg = { role: 'assistant' as const, content: `❌ Fehler: ${error.message}` };
+          setConversation(prev => [...prev, errorMsg]);
           continue;
         }
 
-        // Add result message to conversation
+        // Remove the "loading" message and add the real result
+        setConversation(prev => {
+          const updated = [...prev];
+          // Remove the "⏳ Aktion wird ausgeführt..." message
+          const loadingIdx = updated.findIndex(m => m.content === '⏳ Aktion wird ausgeführt...');
+          if (loadingIdx >= 0) updated.splice(loadingIdx, 1);
+          return updated;
+        });
+
+        // Add result message
         const htmlTable = actionResult?.result?.htmlTable;
         const resultContent = actionResult?.success
-          ? `${actionResult.result?.message || 'Aktion erfolgreich ausgeführt!'}${htmlTable ? '<br/>' + htmlTable : ''}`
-          : `❌ ${actionResult?.result?.error || 'Fehler beim Ausführen der Aktion'}`;
-        const resultMessage = {
-          role: 'assistant' as const,
-          content: resultContent
-        };
-
+          ? `${actionResult.result?.message || 'Aktion erfolgreich!'}${htmlTable ? '<br/>' + htmlTable : ''}`
+          : `❌ ${actionResult?.result?.error || 'Fehler'}`;
+        const resultMessage = { role: 'assistant' as const, content: resultContent };
         setConversation(prev => [...prev, resultMessage]);
 
-        // Save result message
         if (conversationId) {
           await saveMessage(resultMessage, conversationId);
         }
 
-        // Show toast notification
         toast({
           title: actionResult?.success ? "Aktion ausgeführt" : "Fehler",
-          description: actionResult?.success ? 
-            actionResult.result?.message || "Erfolgreich!" :
-            actionResult?.result?.error || "Fehler beim Ausführen",
+          description: actionResult?.success ? actionResult.result?.message || "Erfolgreich!" : actionResult?.result?.error || "Fehler",
           variant: actionResult?.success ? "default" : "destructive"
         });
 
-        // If this is a substitution planning response, show popup confirmation like the page generator
+        // Handle substitution proposals - show confirmation dialog
         const actionNameLower = actionName.toLowerCase();
         const details = actionResult?.result?.details;
         const subs = details?.substitutions || [];
         if (actionResult?.success && (actionNameLower === 'plan_substitution' || actionNameLower === 'update_vertretungsplan') && subs.length > 0) {
-          // Instead of HTML buttons, trigger a modal dialog similar to AIVertretungsGenerator
           const proposedPlan = {
             date: details.date,
             teacher: details.teacher,
@@ -531,59 +523,52 @@ Antworte auf Deutsch und führe die angeforderten Aktionen aus.`
               className: s.className || s.class_name,
               period: s.period,
               subject: s.subject || s.original_subject,
-              room: s.room || s.substitute_room || s.original_room,
-              substituteTeacher: s.substituteTeacher || s.substitute_teacher || 'Vertretung',
-              originalTeacher: s.originalTeacher || s.original_teacher || details.teacher
+              room: s.substituteRoom || s.room || s.substitute_room || s.original_room,
+              substituteTeacher: s.substituteTeacher || s.substitute_teacher || 'Entfall',
+              originalTeacher: s.originalTeacher || s.original_teacher || details.teacher,
+              substituteShortened: s.substituteShortened || null,
+              substituteRoom: s.substituteRoom || s.room,
+              alternativeSubject: s.alternativeSubject || null,
+              date: s.date || details.date,
+              isCascade: s.isCascade || false,
+              originalVertretungId: s.originalVertretungId || null,
+              swapSuggestion: s.swapSuggestion || null
             }))
           };
 
-          // Open modal like on the Vertretungsplan page
           setChatProposedPlan(proposedPlan);
           setConfirmOpen(true);
+          
+          // Build summary
+          const cascadeInfo = details.cascadeDepth > 0 ? `\n🔄 **Kaskade Tiefe:** ${details.cascadeDepth}` : '';
           const summaryMessage = {
             role: 'assistant' as const,
             content: `📋 **Vertretungsplan-Vorschlag für ${details.teacher}**\n` +
-                     `📅 Datum: ${new Date(details.date + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}\n\n` +
-                     `**Betroffene Stunden:**\n` +
-                     subs.map((s: any) => 
-                       `• ${(s.className || s.class_name || '').toUpperCase()}, ${s.period}. Stunde: ${s.subject || s.original_subject} → ${s.substituteTeacher || s.substitute_teacher || 'Vertretung'} (Raum: ${s.room || s.substitute_room || s.original_room || '-'})`
-                     ).join('\n') +
-                     `\n\n💡 **Hinweis:** Gehen Sie zum Vertretungsplan-Bereich, um den Plan zu bestätigen und zu speichern, oder sagen Sie "bestätige Vertretungsplan" um ihn direkt zu speichern.`
+                     `📅 ${new Date(details.date + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}` +
+                     cascadeInfo + `\n\n` +
+                     subs.map((s: any) => {
+                       const roomInfo = s.substituteRoom || s.room || '-';
+                       const scoreInfo = s.score ? ` [Score: ${s.score}]` : '';
+                       const reasonInfo = s.reason ? ` (${s.reason})` : '';
+                       return `• ${(s.className || '').toUpperCase()}, ${s.period}. Std: ${s.subject} → **${s.substituteTeacher || 'Entfall'}** (Raum: ${roomInfo})${reasonInfo}${scoreInfo}`;
+                     }).join('\n') +
+                     `\n\n💡 "bestätige Vertretungsplan" zum Speichern.`
           };
 
           setConversation(prev => [...prev, summaryMessage]);
-          if (conversationId) {
-            await saveMessage(summaryMessage, conversationId);
-          }
+          if (conversationId) await saveMessage(summaryMessage, conversationId);
 
-          // Store the proposal for potential confirmation via chat
           (window as any).lastProposedSubstitution = {
-            substitutions: subs.map((s: any) => ({
-              className: s.className || s.class_name,
-              period: s.period,
-              subject: s.subject || s.original_subject,
-              room: s.room || s.substitute_room || s.original_room,
-              substituteTeacher: s.substituteTeacher || s.substitute_teacher || 'Vertretung',
-              originalTeacher: s.originalTeacher || s.original_teacher || details.teacher
-            })),
+            substitutions: subs,
             sickTeacher: details.teacher,
             date: details.date
           };
         }
-
       } catch (error) {
         console.error('Error processing action:', error);
-        
-        const errorMessage = {
-          role: 'assistant' as const,
-          content: `❌ Fehler beim Ausführen der Aktion ${actionName}: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`
-        };
-
+        const errorMessage = { role: 'assistant' as const, content: `❌ Fehler: ${error instanceof Error ? error.message : 'Unbekannt'}` };
         setConversation(prev => [...prev, errorMessage]);
-        
-        if (conversationId) {
-          await saveMessage(errorMessage, conversationId);
-        }
+        if (conversationId) await saveMessage(errorMessage, conversationId);
       }
     }
   };
@@ -600,11 +585,7 @@ Antworte auf Deutsch und führe die angeforderten Aktionen aus.`
             sickTeacher: chatProposedPlan.teacher,
             date: chatProposedPlan.date,
           },
-          userProfile: {
-            user_id: profile?.id,
-            name: profile?.username || profile?.name,
-            permission_lvl: profile?.permission_lvl
-          }
+          sessionId: sessionId
         }
       });
 
@@ -736,19 +717,20 @@ Antworte auf Deutsch und führe die angeforderten Aktionen aus.`
                                 : 'bg-muted mr-8'
                             }`}
                           >
-                            <div
-                              className="prose prose-sm max-w-none dark:prose-invert"
-                              dangerouslySetInnerHTML={{
-                                __html: (() => {
-                                  const raw = message.content;
-                                  const hasHTML = /<[^>]+>/i.test(raw);
-                                  const withLineBreaks = hasHTML ? raw : raw.replace(/\n/g, '<br>');
-                                  return withLineBreaks.replace(/```([^`]+)```/g,
-                                    '<pre style="background:#f5f5f5;padding:8px;border-radius:4px;overflow-x:auto;"><code>$1</code></pre>'
-                                  );
-                                })()
-                              }}
-                            />
+                            {/<[^>]+>/i.test(message.content) ? (
+                              <div
+                                className="prose prose-sm max-w-none dark:prose-invert"
+                                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(message.content, {
+                                  ALLOWED_TAGS: ['br', 'pre', 'code', 'p', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'h1', 'h2', 'h3', 'span', 'div', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+                                  ALLOWED_ATTR: ['href', 'target', 'rel', 'style', 'class'],
+                                  ALLOW_DATA_ATTR: false
+                                }) }}
+                              />
+                            ) : (
+                              <div className="prose prose-sm max-w-none dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                                <ReactMarkdown>{message.content}</ReactMarkdown>
+                              </div>
+                            )}
                           </div>
                         ))}
                         {isLoading && (
@@ -868,17 +850,30 @@ Antworte auf Deutsch und führe die angeforderten Aktionen aus.`
                     <h4 className="font-medium mb-2">Betroffene Stunden:</h4>
                     <div className="max-h-64 overflow-y-auto space-y-2">
                       {chatProposedPlan.affectedLessons.map((lesson, index) => (
-                        <div key={index} className="flex justify-between items-center p-2 bg-muted rounded">
-                          <div>
-                            <span className="font-medium">{lesson.className}</span>
-                            <span className="text-muted-foreground ml-2">
-                              {lesson.period}. Stunde - {lesson.subject} (Raum {lesson.room || '-'})
-                            </span>
+                        <div key={index} className="p-3 bg-muted rounded-lg space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold">{lesson.className}</span>
+                            <span className="text-sm font-medium text-muted-foreground">{lesson.period}. Stunde</span>
+                            {lesson.isCascade && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded border border-orange-400 text-orange-600">Kaskade</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Originalfach: <strong>{lesson.subject ? lesson.subject.charAt(0).toUpperCase() + lesson.subject.slice(1) : '-'}</strong> · Raum: {lesson.room || '-'}
                           </div>
                           {lesson.substituteTeacher && (
-                            <span className="text-xs px-2 py-1 rounded bg-secondary/60">
-                              Vertretung: {lesson.substituteTeacher}
-                            </span>
+                            <div className="text-sm text-primary">
+                              → <strong>{lesson.substituteTeacher}</strong>
+                              {lesson.alternativeSubject && lesson.alternativeSubject !== lesson.subject && (
+                                <span className="ml-1">({lesson.alternativeSubject.charAt(0).toUpperCase() + lesson.alternativeSubject.slice(1)})</span>
+                              )}
+                              {lesson.substituteRoom && lesson.substituteRoom !== lesson.room && (
+                                <span className="ml-1 text-muted-foreground">· Raum: {lesson.substituteRoom}</span>
+                              )}
+                              {(!lesson.substituteRoom || lesson.substituteRoom === lesson.room) && (
+                                <span className="ml-1 text-muted-foreground">· Raum: {lesson.substituteRoom || lesson.room || '-'}</span>
+                              )}
+                            </div>
                           )}
                         </div>
                       ))}

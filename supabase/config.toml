@@ -1,0 +1,64 @@
+# Self-hosted Supabase instance at api-gymolb.eduard.services
+# Note: project_id is only used for Supabase Cloud - not needed for self-hosted
+# project_id = "afnfyivevmqihuqijusi"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+extra_search_path = ["public"]
+max_rows = 1000
+
+[functions.book-service]
+verify_jwt = false
+
+[functions.permission-manager]
+verify_jwt = false
+
+[functions.admin-users]
+verify_jwt = false
+
+[functions.loan-service]
+verify_jwt = false
+
+[functions.loan-book]
+verify_jwt = false
+
+[functions.chat-service]
+verify_jwt = false
+
+[functions.ai-actions]
+verify_jwt = false
+
+[functions.ai-document-analysis]
+verify_jwt = false
+
+[functions.document-qa]
+verify_jwt = false
+
+[functions.schedule-manager]
+verify_jwt = false
+
+[functions.delete-announcements]
+verify_jwt = false
+
+[functions.elevenlabs-tts]
+verify_jwt = false
+
+[functions.native-tts]
+verify_jwt = false
+
+[functions.audio-tts]
+verify_jwt = false
+
+[functions.python-tts]
+verify_jwt = false
+
+[functions.offline-tts]
+verify_jwt = false
+
+[functions.ollama-proxy]
+verify_jwt = false
+
+[functions.substitution-engine]
+verify_jwt = false

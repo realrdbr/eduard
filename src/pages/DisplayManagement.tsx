@@ -13,7 +13,9 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import UpdateScheduleManager from '@/components/UpdateScheduleManager';
 import { 
   Monitor, 
   ArrowLeft, 
@@ -23,7 +25,9 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
-  Plus
+  Plus,
+  Calendar,
+  BookOpen
 } from 'lucide-react';
 
 interface RoomDisplay {
@@ -36,6 +40,7 @@ interface RoomDisplay {
   info_mode_content: string | null;
   additional_info: string | null;
   update_schedule_id: number | null;
+  primary_subject: string | null;
 }
 
 interface UpdateSchedule {
@@ -61,7 +66,8 @@ const DisplayManagement = () => {
     display_name: '',
     additional_info: '',
     display_mode: 'schedule',
-    info_mode_content: ''
+    info_mode_content: '',
+    primary_subject: ''
   });
 
   const canManageDisplays = hasPermission('display_management');
@@ -122,6 +128,9 @@ const DisplayManagement = () => {
 
   const handleToggleActive = async (display: RoomDisplay) => {
     try {
+      if (sessionId) {
+        await supabase.rpc('set_session_context', { session_id_param: sessionId });
+      }
       const { error } = await supabase
         .from('room_displays')
         .update({ is_active: !display.is_active })
@@ -151,6 +160,9 @@ const DisplayManagement = () => {
     if (selectedDisplays.size === 0) return;
 
     try {
+      if (sessionId) {
+        await supabase.rpc('set_session_context', { session_id_param: sessionId });
+      }
       const { error } = await supabase
         .from('room_displays')
         .update({ is_active: false })
@@ -181,6 +193,9 @@ const DisplayManagement = () => {
     if (!editingDisplay) return;
 
     try {
+      if (sessionId) {
+        await supabase.rpc('set_session_context', { session_id_param: sessionId });
+      }
       const { error } = await supabase
         .from('room_displays')
         .update({
@@ -189,7 +204,8 @@ const DisplayManagement = () => {
           additional_info: editingDisplay.additional_info,
           display_mode: editingDisplay.display_mode,
           info_mode_content: editingDisplay.info_mode_content,
-          update_schedule_id: editingDisplay.update_schedule_id
+          update_schedule_id: editingDisplay.update_schedule_id,
+          primary_subject: editingDisplay.primary_subject || null
         })
         .eq('id', editingDisplay.id);
 
@@ -226,6 +242,9 @@ const DisplayManagement = () => {
     }
 
     try {
+      if (sessionId) {
+        await supabase.rpc('set_session_context', { session_id_param: sessionId });
+      }
       const { data, error } = await supabase
         .from('room_displays')
         .insert({
@@ -234,6 +253,7 @@ const DisplayManagement = () => {
           additional_info: newDisplay.additional_info.trim() || null,
           display_mode: newDisplay.display_mode,
           info_mode_content: newDisplay.display_mode === 'info' ? newDisplay.info_mode_content : null,
+          primary_subject: newDisplay.primary_subject.trim() || null,
           is_active: true
         })
         .select()
@@ -248,7 +268,8 @@ const DisplayManagement = () => {
         display_name: '',
         additional_info: '',
         display_mode: 'schedule',
-        info_mode_content: ''
+        info_mode_content: '',
+        primary_subject: ''
       });
 
       toast({
@@ -331,131 +352,158 @@ const DisplayManagement = () => {
       </header>
 
       <main className="container mx-auto px-4 py-6">
-        {/* Bulk Actions Bar */}
-        {selectedDisplays.size > 0 && (
-          <Card className="mb-4 border-primary">
-            <CardContent className="py-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">
-                  {selectedDisplays.size} Display(s) ausgewählt
-                </span>
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => setSelectedDisplays(new Set())}>
-                    <XCircle className="h-4 w-4 mr-2" />
-                    Auswahl aufheben
-                  </Button>
-                  <Button variant="destructive" size="sm" onClick={handleBulkDeactivate}>
-                    Alle deaktivieren
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <Tabs defaultValue="displays" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="displays" className="flex items-center gap-2">
+              <Monitor className="h-4 w-4" />
+              Displays
+            </TabsTrigger>
+            <TabsTrigger value="schedules" className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Aktualisierungszeitpläne
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Select All */}
-        <div className="mb-4 flex items-center gap-2">
-          <Checkbox
-            checked={selectedDisplays.size === displays.length && displays.length > 0}
-            onCheckedChange={selectAll}
-          />
-          <span className="text-sm text-muted-foreground">Alle auswählen</span>
-          <Badge variant="secondary" className="ml-2">{displays.length} Displays</Badge>
-        </div>
-
-        {/* Display Grid */}
-        {isLoading ? (
-          <div className="flex justify-center py-12">
-            <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : displays.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <Monitor className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground">Keine Displays gefunden.</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {displays.map(display => (
-              <Card 
-                key={display.id} 
-                className={`relative transition-all ${selectedDisplays.has(display.id) ? 'ring-2 ring-primary' : ''}`}
-              >
-                <div className="absolute top-3 left-3">
-                  <Checkbox
-                    checked={selectedDisplays.has(display.id)}
-                    onCheckedChange={() => toggleSelection(display.id)}
-                  />
-                </div>
-                <CardHeader className="pt-10 pb-2">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <CardTitle className="text-lg">
-                        {display.display_name || display.room_name}
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground">Raum: {display.room_name}</p>
-                    </div>
-                    <Badge 
-                      variant={isOnline(display.last_seen) ? "default" : "destructive"}
-                      className="flex items-center gap-1"
-                    >
-                      {isOnline(display.last_seen) ? (
-                        <>
-                          <Wifi className="h-3 w-3" />
-                          Online
-                        </>
-                      ) : (
-                        <>
-                          <WifiOff className="h-3 w-3" />
-                          Offline
-                        </>
-                      )}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
+          <TabsContent value="displays">
+            {/* Bulk Actions Bar */}
+            {selectedDisplays.size > 0 && (
+              <Card className="mb-4 border-primary">
+                <CardContent className="py-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm">Aktiv</span>
-                    <Switch
-                      checked={display.is_active ?? false}
-                      onCheckedChange={() => handleToggleActive(display)}
-                    />
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Modus: {display.display_mode === 'info' ? 'Informationstext' : 'Stundenplan'}
-                  </div>
-                  {display.last_seen && (
-                    <div className="text-xs text-muted-foreground">
-                      Zuletzt gesehen: {new Date(display.last_seen).toLocaleString('de-DE')}
+                    <span className="text-sm font-medium">
+                      {selectedDisplays.size} Display(s) ausgewählt
+                    </span>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setSelectedDisplays(new Set())}>
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Auswahl aufheben
+                      </Button>
+                      <Button variant="destructive" size="sm" onClick={handleBulkDeactivate}>
+                        Alle deaktivieren
+                      </Button>
                     </div>
-                  )}
-                  <div className="flex gap-2 pt-2">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="flex-1"
-                      onClick={() => {
-                        setEditingDisplay(display);
-                        setShowEditDialog(true);
-                      }}
-                    >
-                      <Edit className="h-4 w-4 mr-1" />
-                      Bearbeiten
-                    </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => handleCopyId(display.id)}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
                   </div>
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        )}
+            )}
+
+            {/* Select All */}
+            <div className="mb-4 flex items-center gap-2">
+              <Checkbox
+                checked={selectedDisplays.size === displays.length && displays.length > 0}
+                onCheckedChange={selectAll}
+              />
+              <span className="text-sm text-muted-foreground">Alle auswählen</span>
+              <Badge variant="secondary" className="ml-2">{displays.length} Displays</Badge>
+            </div>
+
+            {/* Display Grid */}
+            {isLoading ? (
+              <div className="flex justify-center py-12">
+                <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : displays.length === 0 ? (
+              <Card>
+                <CardContent className="py-12 text-center">
+                  <Monitor className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">Keine Displays gefunden.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {displays.map(display => (
+                  <Card 
+                    key={display.id} 
+                    className={`relative transition-all ${selectedDisplays.has(display.id) ? 'ring-2 ring-primary' : ''}`}
+                  >
+                    <div className="absolute top-3 left-3">
+                      <Checkbox
+                        checked={selectedDisplays.has(display.id)}
+                        onCheckedChange={() => toggleSelection(display.id)}
+                      />
+                    </div>
+                    <CardHeader className="pt-10 pb-2">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className="text-xl font-bold">
+                            {display.room_name}
+                          </CardTitle>
+                          {display.primary_subject && (
+                            <div className="flex items-center gap-1 mt-1">
+                              <BookOpen className="h-3.5 w-3.5 text-primary" />
+                              <span className="text-sm font-medium text-primary">{display.primary_subject}</span>
+                            </div>
+                          )}
+                          {display.display_name && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{display.display_name}</p>
+                          )}
+                        </div>
+                        <Badge 
+                          variant={isOnline(display.last_seen) ? "default" : "destructive"}
+                          className="flex items-center gap-1"
+                        >
+                          {isOnline(display.last_seen) ? (
+                            <>
+                              <Wifi className="h-3 w-3" />
+                              Online
+                            </>
+                          ) : (
+                            <>
+                              <WifiOff className="h-3 w-3" />
+                              Offline
+                            </>
+                          )}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">Aktiv</span>
+                        <Switch
+                          checked={display.is_active ?? false}
+                          onCheckedChange={() => handleToggleActive(display)}
+                        />
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Modus: {display.display_mode === 'info' ? 'Informationstext' : 'Stundenplan'}
+                      </div>
+                      {display.last_seen && (
+                        <div className="text-xs text-muted-foreground">
+                          Zuletzt gesehen: {new Date(display.last_seen).toLocaleString('de-DE')}
+                        </div>
+                      )}
+                      <div className="flex gap-2 pt-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="flex-1"
+                          onClick={() => {
+                            setEditingDisplay(display);
+                            setShowEditDialog(true);
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Bearbeiten
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleCopyId(display.id)}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="schedules">
+            <UpdateScheduleManager />
+          </TabsContent>
+        </Tabs>
       </main>
 
       {/* Edit Dialog */}
@@ -483,6 +531,16 @@ const DisplayManagement = () => {
                   value={editingDisplay.room_name}
                   onChange={e => setEditingDisplay({ ...editingDisplay, room_name: e.target.value })}
                   placeholder="z.B. 101"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="primary_subject">Fach / Fächer</Label>
+                <Input
+                  id="primary_subject"
+                  value={editingDisplay.primary_subject || ''}
+                  onChange={e => setEditingDisplay({ ...editingDisplay, primary_subject: e.target.value })}
+                  placeholder="z.B. Physik, Chemie"
                 />
               </div>
 
@@ -596,6 +654,16 @@ const DisplayManagement = () => {
                 value={newDisplay.display_name}
                 onChange={e => setNewDisplay({ ...newDisplay, display_name: e.target.value })}
                 placeholder="z.B. Physikraum-Display"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new_primary_subject">Fach / Fächer</Label>
+              <Input
+                id="new_primary_subject"
+                value={newDisplay.primary_subject}
+                onChange={e => setNewDisplay({ ...newDisplay, primary_subject: e.target.value })}
+                placeholder="z.B. Physik, Chemie"
               />
             </div>
 

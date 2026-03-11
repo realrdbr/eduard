@@ -13,6 +13,9 @@ import { toast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import RoleBasedLayout from '@/components/RoleBasedLayout';
 import AIVertretungsGenerator from '@/components/AIVertretungsGenerator';
+import SubstitutionEngine from '@/components/SubstitutionEngine';
+import TeacherQuotaDashboard from '@/components/TeacherQuotaDashboard';
+import SubstitutionImport from '@/components/SubstitutionImport';
 import DebugVertretungsplan from '@/components/DebugVertretungsplan';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -96,7 +99,14 @@ const Vertretungsplan = () => {
     substituteRoom: '',
     note: ''
   });
-const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
+const getInitialDate = () => {
+    const now = new Date();
+    const day = now.getDay();
+    if (day === 6) now.setDate(now.getDate() + 2); // Samstag → Montag
+    if (day === 0) now.setDate(now.getDate() + 1); // Sonntag → Montag
+    return toISODateLocal(now);
+  };
+  const [selectedDate, setSelectedDate] = useState(getInitialDate());
   const [selectedClass, setSelectedClass] = useState('10b');
 
   const handlePrevWeek = () => {
@@ -114,7 +124,11 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
   };
 
   const handleThisWeek = () => {
-    setSelectedDate(toISODateLocal(new Date()));
+    const now = new Date();
+    const day = now.getDay();
+    if (day === 6) now.setDate(now.getDate() + 2);
+    if (day === 0) now.setDate(now.getDate() + 1);
+    setSelectedDate(toISODateLocal(now));
   };
 
   useEffect(() => {
@@ -256,7 +270,6 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
   };
 
   const hasSubstitution = (classname: string, day: string, period: number, originalTeacher?: string, originalSubject?: string) => {
-    // Get the actual date for this weekday in the selected week
     const selectedDateObj = new Date(selectedDate + 'T00:00:00');
     const dayOfWeek = selectedDateObj.getDay();
     const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
@@ -273,20 +286,24 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
       const dateMatch = sub.date === targetDateString;
       const periodMatch = sub.period === period;
       
-      // If we have teacher/subject info, match more specifically
-      if (originalTeacher && originalSubject) {
-        const teacherMatch = (sub.teacher || '').toLowerCase().includes((originalTeacher || '').toLowerCase());
-        const subjectMatch = (sub.subject || '').toLowerCase() === (originalSubject || '').toLowerCase();
-        return classMatch && dateMatch && periodMatch && teacherMatch && subjectMatch;
+      // Primary match: class + date + period
+      if (!classMatch || !dateMatch || !periodMatch) return false;
+      
+      // If teacher info provided, try to match but also accept if original_teacher contains or matches
+      if (originalTeacher) {
+        const subTeacher = (sub.teacher || '').toLowerCase();
+        const origTeacher = (originalTeacher || '').toLowerCase();
+        // Accept if either contains the other (handles abbreviation mismatches)
+        if (subTeacher && origTeacher && !subTeacher.includes(origTeacher) && !origTeacher.includes(subTeacher)) {
+          return false;
+        }
       }
       
-      // Fallback to basic matching
-      return classMatch && dateMatch && periodMatch;
+      return true;
     });
   };
 
   const getSubstitution = (classname: string, day: string, period: number, originalTeacher?: string, originalSubject?: string) => {
-    // Get the actual date for this weekday in the selected week
     const selectedDateObj = new Date(selectedDate + 'T00:00:00');
     const dayOfWeek = selectedDateObj.getDay();
     const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
@@ -303,15 +320,17 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
       const dateMatch = sub.date === targetDateString;
       const periodMatch = sub.period === period;
       
-      // If we have teacher/subject info, match more specifically
-      if (originalTeacher && originalSubject) {
-        const teacherMatch = (sub.teacher || '').toLowerCase().includes((originalTeacher || '').toLowerCase());
-        const subjectMatch = (sub.subject || '').toLowerCase() === (originalSubject || '').toLowerCase();
-        return classMatch && dateMatch && periodMatch && teacherMatch && subjectMatch;
+      if (!classMatch || !dateMatch || !periodMatch) return false;
+      
+      if (originalTeacher) {
+        const subTeacher = (sub.teacher || '').toLowerCase();
+        const origTeacher = (originalTeacher || '').toLowerCase();
+        if (subTeacher && origTeacher && !subTeacher.includes(origTeacher) && !origTeacher.includes(subTeacher)) {
+          return false;
+        }
       }
       
-      // Fallback to basic matching
-      return classMatch && dateMatch && periodMatch;
+      return true;
     });
   };
 
@@ -378,6 +397,10 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
 
     try {
       if (selectedScheduleEntry.isEdit && selectedScheduleEntry.substitutionId) {
+        // Get old substitute teacher before updating (for quota adjustment)
+        const existingSub = substitutions.find(s => s.id === selectedScheduleEntry.substitutionId);
+        const oldSubstituteTeacher = existingSub?.substituteTeacher || '';
+
         // Update existing substitution via session RPC
         console.log('Updating substitution with sessionId:', sessionId);
         const { data, error } = await supabase.rpc('update_vertretung_session', {
@@ -392,6 +415,36 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
 
         if (error || !(data as any)?.success) {
           throw new Error((data as any)?.error || (error as any)?.message || 'Aktualisierung fehlgeschlagen');
+        }
+
+        // Adjust quotas if substitute teacher changed
+        const newSubstituteTeacher = substitutionData.substituteTeacher || '';
+        if (oldSubstituteTeacher !== newSubstituteTeacher) {
+          try {
+            // Untrack old substitute teacher
+            if (oldSubstituteTeacher) {
+              await supabase.functions.invoke('substitution-engine', {
+                body: { action: 'untrack_quota', sessionId, data: { substituteTeacher: oldSubstituteTeacher, date: targetDate } }
+              });
+            }
+            // Track new substitute teacher
+            if (newSubstituteTeacher) {
+              await supabase.functions.invoke('substitution-engine', {
+                body: {
+                  action: 'track_quota', sessionId,
+                  data: {
+                    substituteTeacher: newSubstituteTeacher,
+                    className: selectedScheduleEntry.class.toLowerCase(),
+                    period: Number(selectedScheduleEntry.period),
+                    date: targetDate,
+                    subject: substitutionData.substituteSubject || selectedScheduleEntry.entry.subject || ''
+                  }
+                }
+              });
+            }
+          } catch (quotaErr) {
+            console.error('Quota adjustment error (non-critical):', quotaErr);
+          }
         }
 
         toast({
@@ -424,6 +477,45 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
           title: "Vertretung erstellt",
           description: "Die Vertretung wurde erfolgreich erstellt."
         });
+
+        // Track quota for the substitute teacher (add hours)
+        if (substitutionData.substituteTeacher) {
+          try {
+            await supabase.functions.invoke('substitution-engine', {
+              body: {
+                action: 'track_quota',
+                sessionId,
+                data: {
+                  substituteTeacher: substitutionData.substituteTeacher,
+                  className: selectedScheduleEntry.class.toLowerCase(),
+                  period: Number(selectedScheduleEntry.period),
+                  date: targetDate,
+                  subject: substitutionData.substituteSubject || selectedScheduleEntry.entry.subject || ''
+                }
+              }
+            });
+          } catch (quotaErr) {
+            console.error('Quota tracking error (non-critical):', quotaErr);
+          }
+        }
+
+        // Untrack quota for the original (absent) teacher (deduct hours)
+        if (selectedScheduleEntry.entry.teacher) {
+          try {
+            await supabase.functions.invoke('substitution-engine', {
+              body: {
+                action: 'untrack_quota',
+                sessionId,
+                data: {
+                  substituteTeacher: selectedScheduleEntry.entry.teacher,
+                  date: targetDate
+                }
+              }
+            });
+          } catch (quotaErr) {
+            console.error('Original teacher quota deduction error (non-critical):', quotaErr);
+          }
+        }
       }
 
       // Refresh data and close dialog
@@ -453,6 +545,11 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
     }
 
     try {
+      // Get the substitute teacher before deleting (for quota adjustment)
+      const existingSub = substitutions.find(s => s.id === selectedScheduleEntry.substitutionId);
+      const substituteTeacher = existingSub?.substituteTeacher || '';
+      const subDate = existingSub?.date || selectedScheduleEntry.targetDate || selectedDate;
+
       console.log('Deleting substitution with sessionId:', sessionId);
       const { data, error } = await supabase.rpc('delete_vertretung_session', {
         v_id: selectedScheduleEntry.substitutionId,
@@ -462,6 +559,39 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
 
       if (error || !(data as any)?.success) {
         throw new Error((data as any)?.error || (error as any)?.message || 'Löschen fehlgeschlagen');
+      }
+
+      // Untrack quota for the substitute teacher (remove added hours)
+      if (substituteTeacher) {
+        try {
+          await supabase.functions.invoke('substitution-engine', {
+            body: { action: 'untrack_quota', sessionId, data: { substituteTeacher, date: subDate } }
+          });
+        } catch (quotaErr) {
+          console.error('Quota untrack error (non-critical):', quotaErr);
+        }
+      }
+
+      // Re-track quota for the original teacher (restore deducted hours)
+      const originalTeacher = existingSub?.teacher || selectedScheduleEntry.entry?.teacher || '';
+      if (originalTeacher) {
+        try {
+          await supabase.functions.invoke('substitution-engine', {
+            body: {
+              action: 'track_quota',
+              sessionId,
+              data: {
+                substituteTeacher: originalTeacher,
+                className: existingSub?.class || selectedScheduleEntry.class || '',
+                period: existingSub?.period || selectedScheduleEntry.period || 0,
+                date: subDate,
+                subject: existingSub?.subject || ''
+              }
+            }
+          });
+        } catch (quotaErr) {
+          console.error('Original teacher quota restore error (non-critical):', quotaErr);
+        }
       }
 
       toast({
@@ -531,18 +661,18 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size={isMobile ? "icon" : "sm"} onClick={() => navigate('/')} className="h-10">
-                <ArrowLeft className="h-4 w-4" />
-                {!isMobile && <span className="ml-2">Zurück zum Dashboard</span>}
+        <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="shrink-0">
+                <ArrowLeft className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Zurück zum Dashboard</span>
               </Button>
-              <div className="flex items-center gap-3">
-                <Calendar className="h-6 w-6 text-primary" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <Calendar className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
                 <div>
-                  <h1 className="text-2xl font-bold text-foreground">Vertretungsplan</h1>
-                  <p className="text-muted-foreground">
+                  <h1 className="text-lg sm:text-2xl font-bold text-foreground">Vertretungsplan</h1>
+                  <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
                     {canEditSubstitutions ? "Vertretungen verwalten" : "Vertretungen einsehen"}
                   </p>
                 </div>
@@ -603,13 +733,35 @@ const [selectedDate, setSelectedDate] = useState(toISODateLocal(new Date()));
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         <div className="space-y-6">
           
-          {/* AI Generator - nur für Schulleitung */}
+          {/* Smart Substitution Engine - nur für Schulleitung */}
+          <RoleBasedLayout requiredPermission={10}>
+            <SubstitutionEngine onGenerated={(targetDate) => {
+              if (targetDate) {
+                setSelectedDate(targetDate);
+              }
+              fetchSubstitutions();
+            }} />
+          </RoleBasedLayout>
+
+          {/* Kontingent-Dashboard - nur für Schulleitung */}
+          <RoleBasedLayout requiredPermission={10}>
+            <TeacherQuotaDashboard />
+          </RoleBasedLayout>
+
+          {/* Import - nur für Schulleitung */}
+          <RoleBasedLayout requiredPermission={10}>
+            <SubstitutionImport onImported={fetchSubstitutions} />
+          </RoleBasedLayout>
+
+          {/* Legacy AI Generator - auskommentiert */}
+          {/*
           <RoleBasedLayout requiredPermission={10}>
             <AIVertretungsGenerator onGenerated={fetchSubstitutions} />
           </RoleBasedLayout>
+          */}
 
           {/* Mobile Navigation Controls */}
           {isMobile && (
@@ -765,9 +917,9 @@ Stundenplan {selectedClass} - Woche {formatWeekRange(__weekStart)}
                       const isToday = substitution.date === toISODateLocal(new Date());
                       
                       return (
-                        <div key={substitution.id} className="flex items-center justify-between p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                          <div className="flex items-center gap-4">
-                            <span className="font-medium text-sm">{dayName}</span>
+                        <div key={substitution.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 bg-destructive/10 border border-destructive/20 rounded-md gap-2">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                            <span className="font-medium">{dayName}</span>
                             <span className="font-medium">{substitution.period}. Std</span>
                             <span className="font-medium">{substitution.class}</span>
                             <span>{substitution.subject}</span>
@@ -783,7 +935,7 @@ Stundenplan {selectedClass} - Woche {formatWeekRange(__weekStart)}
                             <Button 
                               variant="ghost" 
                               size="sm" 
-                              className="text-destructive"
+                              className="text-destructive shrink-0 self-end sm:self-center"
                               onClick={() => handleDeleteSubstitutionById(substitution.id)}
                             >
                               <Trash2 className="h-4 w-4" />

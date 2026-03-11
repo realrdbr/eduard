@@ -385,7 +385,7 @@ const AudioAnnouncements = () => {
       const { data, error } = await supabase.functions.invoke('delete-announcements', {
         body: { 
           all: true, 
-          user_id: profile?.username || profile?.name 
+          sessionId: sessionId || ''
         }
       });
 
@@ -464,7 +464,7 @@ const AudioAnnouncements = () => {
       const { data, error } = await supabase.functions.invoke('delete-announcements', {
         body: { 
           id: announcement.id, 
-          user_id: profile?.username || profile?.name 
+          sessionId: sessionId || ''
         }
       });
 

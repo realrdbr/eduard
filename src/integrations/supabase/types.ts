@@ -590,6 +590,7 @@ export type Database = {
       room_displays: {
         Row: {
           additional_info: string | null
+          battery_level: number | null
           created_at: string | null
           display_mode: string
           display_name: string | null
@@ -599,11 +600,13 @@ export type Database = {
           last_seen: string | null
           primary_subject: string | null
           room_name: string
+          temperature: number | null
           update_schedule_id: number | null
           updated_at: string | null
         }
         Insert: {
           additional_info?: string | null
+          battery_level?: number | null
           created_at?: string | null
           display_mode?: string
           display_name?: string | null
@@ -613,11 +616,13 @@ export type Database = {
           last_seen?: string | null
           primary_subject?: string | null
           room_name: string
+          temperature?: number | null
           update_schedule_id?: number | null
           updated_at?: string | null
         }
         Update: {
           additional_info?: string | null
+          battery_level?: number | null
           created_at?: string | null
           display_mode?: string
           display_name?: string | null
@@ -627,6 +632,7 @@ export type Database = {
           last_seen?: string | null
           primary_subject?: string | null
           room_name?: string
+          temperature?: number | null
           update_schedule_id?: number | null
           updated_at?: string | null
         }
@@ -767,6 +773,145 @@ export type Database = {
           wednesday?: string | null
         }
         Relationships: []
+      }
+      substitution_log: {
+        Row: {
+          class_name: string
+          created_at: string
+          created_by_user_id: number | null
+          date: string
+          id: string
+          month_year: string
+          period: number
+          subject: string | null
+          teacher_shortened: string
+          vertretung_id: string | null
+        }
+        Insert: {
+          class_name: string
+          created_at?: string
+          created_by_user_id?: number | null
+          date: string
+          id?: string
+          month_year: string
+          period: number
+          subject?: string | null
+          teacher_shortened: string
+          vertretung_id?: string | null
+        }
+        Update: {
+          class_name?: string
+          created_at?: string
+          created_by_user_id?: number | null
+          date?: string
+          id?: string
+          month_year?: string
+          period?: number
+          subject?: string | null
+          teacher_shortened?: string
+          vertretung_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "substitution_log_teacher_shortened_fkey"
+            columns: ["teacher_shortened"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["shortened"]
+          },
+          {
+            foreignKeyName: "substitution_log_vertretung_id_fkey"
+            columns: ["vertretung_id"]
+            isOneToOne: false
+            referencedRelation: "vertretungsplan"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      substitution_settings: {
+        Row: {
+          id: string
+          key: string
+          updated_at: string | null
+          value: Json
+        }
+        Insert: {
+          id?: string
+          key: string
+          updated_at?: string | null
+          value: Json
+        }
+        Update: {
+          id?: string
+          key?: string
+          updated_at?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
+      teacher_substitution_quotas: {
+        Row: {
+          created_at: string
+          id: string
+          max_units: number
+          month_year: string
+          teacher_shortened: string
+          updated_at: string
+          used_units: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          max_units?: number
+          month_year: string
+          teacher_shortened: string
+          updated_at?: string
+          used_units?: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          max_units?: number
+          month_year?: string
+          teacher_shortened?: string
+          updated_at?: string
+          used_units?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teacher_substitution_quotas_teacher_shortened_fkey"
+            columns: ["teacher_shortened"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["shortened"]
+          },
+        ]
+      }
+      teacher_weekly_limits: {
+        Row: {
+          teacher_shortened: string
+          updated_at: string | null
+          weekly_limit: number
+        }
+        Insert: {
+          teacher_shortened: string
+          updated_at?: string | null
+          weekly_limit?: number
+        }
+        Update: {
+          teacher_shortened?: string
+          updated_at?: string | null
+          weekly_limit?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teacher_weekly_limits_teacher_shortened_fkey"
+            columns: ["teacher_shortened"]
+            isOneToOne: true
+            referencedRelation: "teachers"
+            referencedColumns: ["shortened"]
+          },
+        ]
       }
       teachers: {
         Row: {
@@ -1244,6 +1389,10 @@ export type Database = {
         Args: { resource_user_id: number }
         Returns: boolean
       }
+      decrement_substitution_quota: {
+        Args: { p_teacher_shortened: string; p_vertretung_id: string }
+        Returns: undefined
+      }
       delete_audio_announcement_session: {
         Args: { v_announcement_id: string; v_session_id: string }
         Returns: Json
@@ -1292,6 +1441,24 @@ export type Database = {
         Args: { other_user_id: number; v_session_id?: string }
         Returns: string
       }
+      get_or_create_quota: {
+        Args: { p_month_year?: string; p_teacher_shortened: string }
+        Returns: {
+          created_at: string
+          id: string
+          max_units: number
+          month_year: string
+          teacher_shortened: string
+          updated_at: string
+          used_units: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "teacher_substitution_quotas"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       get_schedule_for_room_display: {
         Args: { p_room_display_id: string }
         Returns: {
@@ -1331,6 +1498,18 @@ export type Database = {
         Returns: boolean
       }
       hash_password: { Args: { password_input: string }; Returns: string }
+      increment_substitution_quota: {
+        Args: {
+          p_class_name: string
+          p_created_by?: number
+          p_date: string
+          p_period: number
+          p_subject?: string
+          p_teacher_shortened: string
+          p_vertretung_id: string
+        }
+        Returns: Json
+      }
       invalidate_user_sessions: {
         Args: { keep_session_id?: string; target_user_id: number }
         Returns: undefined

@@ -194,28 +194,28 @@ const Stundenplan = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Zurück zum Dashboard
+        <div className="container mx-auto px-3 sm:px-4 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="shrink-0">
+                <ArrowLeft className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Zurück zum Dashboard</span>
               </Button>
-              <div className="flex items-center gap-3">
-                <Calendar className="h-6 w-6 text-primary" />
+              <div className="flex items-center gap-2 sm:gap-3">
+                <Calendar className="h-5 w-5 sm:h-6 sm:w-6 text-primary shrink-0" />
                 <div>
-                  <h1 className="text-2xl font-bold text-foreground">Stundenplan</h1>
-                  <p className="text-muted-foreground">Aktuelle Stundenpläne</p>
+                  <h1 className="text-lg sm:text-2xl font-bold text-foreground">Stundenplan</h1>
+                  <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">Aktuelle Stundenpläne</p>
                 </div>
               </div>
             </div>
             
             {/* Class Selection in Header */}
             {classSchedules.length > 0 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <span className="text-sm font-medium">Klasse:</span>
                 <Select value={selectedClass} onValueChange={setSelectedClass}>
-                  <SelectTrigger className="w-32">
+                  <SelectTrigger className="w-full sm:w-32">
                     <SelectValue placeholder="Wählen" />
                   </SelectTrigger>
                   <SelectContent>
@@ -233,7 +233,7 @@ const Stundenplan = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-3 sm:px-4 py-4 sm:py-8">
         {/* Schedule Display */}
         <Card>
           <CardHeader>
