@@ -11,11 +11,10 @@ async function generateTTSAudio(text: string, voiceId: string = 'alloy', usePipe
   console.log('TTS Generation:', { sample: text.substring(0, 60), voiceId, usePiper })
   
   if (usePiper) {
+    const piperBase = Deno.env.get('PIPER_TTS_URL') || 'https://localhost/pipertts';
     const endpoints = [
-      'https://gymolb.eduard.services/pipertts',
-      'https://gymolb.eduard.services/pipertts/',
-      'http://gymolb.eduard.services/pipertts',
-      'http://gymolb.eduard.services/pipertts/',
+      piperBase,
+      piperBase.endsWith('/') ? piperBase : piperBase + '/',
     ]
 
     for (const url of endpoints) {
