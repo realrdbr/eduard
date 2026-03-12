@@ -18,7 +18,10 @@ interface ChatMessage {
   content: string;
 }
 
-const OLLAMA_PROXY_URL = 'https://gymolb.eduard.services/ai/api/chat'; // <-- Stelle sicher, dass die URL korrekt ist
+const OLLAMA_PROXY_URL = import.meta.env.VITE_AI_CHAT_URL;
+if (!OLLAMA_PROXY_URL) {
+  console.warn('VITE_AI_CHAT_URL ist nicht in der .env gesetzt – KI-Chat wird nicht funktionieren.');
+}
 
 const AIChat = () => {
   const navigate = useNavigate();
