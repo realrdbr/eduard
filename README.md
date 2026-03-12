@@ -42,7 +42,7 @@ npm install --legacy-peer-deps
 
 ### 3. Umgebungsvariablen konfigurieren
 
-Erstellen Sie im Hauptverzeichnis eine Datei namens `.env`. Diese Datei enthält die Zugangsdaten zu Ihrer Supabase-Instanz.
+Erstellen Sie im Hauptverzeichnis eine Datei namens `.env`. Diese Datei enthält die Zugangsdaten zu Ihrer Supabase-Instanz. Sollten **keine Daten** eingerichtet sein, so **lädt die Seite nicht**, also bleibt weiß.
 
 ```env
 # Supabase API URL - Die Basis-URL Ihrer Supabase-Instanz
