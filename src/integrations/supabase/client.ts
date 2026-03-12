@@ -2,9 +2,13 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Self-hosted Supabase instance at api-gymolb.eduard.services
-const SUPABASE_URL = "https://api-gymolb.eduard.services";
-const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzY5MzM3OTg5LCJleHAiOjE5MjcwMTc5ODl9.IrUki0_YwrEwG-cQG3cW3g5fYpATMxEiDEVcIEnwDKU";
+// URL und Key werden aus der .env geladen (VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY)
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  throw new Error('VITE_SUPABASE_URL und VITE_SUPABASE_PUBLISHABLE_KEY müssen in der .env gesetzt sein!');
+}
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
