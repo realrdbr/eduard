@@ -86,7 +86,7 @@ Supabase bietet eine Docker-basierte Self-Hosting-Lösung an, die PostgreSQL, Go
 
 ### Supabase Edge Functions
 
-Edge Functions ermöglichen serverseitige Logik (z.B. VErtretungsplanerstellung, KI-Funktionen) in einer isolierten Runtime.
+Edge Functions ermöglichen serverseitige Logik (z.B. Vertretungsplanerstellung, KI-Funktionen) in einer isolierten Runtime.
 
 * [Anleitung: Edge Runtime lokal betreiben](https://www.google.com/search?q=https://supabase.com/docs/guides/functions/local-development)
 
