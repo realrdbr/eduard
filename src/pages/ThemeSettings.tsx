@@ -44,11 +44,19 @@ const ThemeSettings = () => {
   });
 
   const handlePresetSelect = async (preset: any) => {
-    await setTheme(preset);
-    toast({
-      title: "Theme geändert",
-      description: `${preset.name} wurde angewendet.`,
-    });
+    try {
+      await setTheme(preset);
+      toast({
+        title: "Theme geändert",
+        description: `${preset.name} wurde angewendet.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error?.message || 'Theme konnte nicht angewendet werden.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleCreateTheme = async () => {
@@ -61,13 +69,20 @@ const ThemeSettings = () => {
       return;
     }
 
-    await createTheme(newThemeName, customColors);
-    toast({
-      title: "Theme erstellt",
-      description: `${newThemeName} wurde erstellt und angewendet.`,
-    });
-    setIsCreateDialogOpen(false);
-    setNewThemeName('');
+    try {
+      await createTheme(newThemeName, customColors);
+      toast({
+        title: "Theme erstellt",
+        description: `${newThemeName.trim()} wurde erstellt und angewendet.`,
+      });
+      setNewThemeName('');
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error?.message || 'Theme konnte nicht erstellt werden.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEditTheme = (theme: any) => {
@@ -79,21 +94,37 @@ const ThemeSettings = () => {
   const handleUpdateTheme = async () => {
     if (!editingTheme) return;
 
-    await updateTheme(editingTheme.id, customColors);
-    toast({
-      title: "Theme aktualisiert",
-      description: `${editingTheme.name} wurde aktualisiert.`,
-    });
-    setIsEditDialogOpen(false);
-    setEditingTheme(null);
+    try {
+      await updateTheme(editingTheme.id, customColors);
+      toast({
+        title: "Theme aktualisiert",
+        description: `${editingTheme.name} wurde aktualisiert.`,
+      });
+      setIsEditDialogOpen(false);
+      setEditingTheme(null);
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error?.message || 'Theme konnte nicht aktualisiert werden.',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDeleteTheme = async (themeId: string, themeName: string) => {
-    await deleteTheme(themeId);
-    toast({
-      title: "Theme gelöscht",
-      description: `${themeName} wurde gelöscht.`,
-    });
+    try {
+      await deleteTheme(themeId);
+      toast({
+        title: "Theme gelöscht",
+        description: `${themeName} wurde gelöscht.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Fehler",
+        description: error?.message || 'Theme konnte nicht gelöscht werden.',
+        variant: "destructive",
+      });
+    }
   };
 
   const colorInputs = [
