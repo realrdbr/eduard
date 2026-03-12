@@ -51,6 +51,9 @@ VITE_SUPABASE_URL="[https://ihre-instanz.supabase.co](https://ihre-instanz.supab
 # Supabase Anon Key - Der öffentliche API-Key für den Client-Zugriff
 VITE_SUPABASE_PUBLISHABLE_KEY="Ihr_Anon_Key_hier"
 
+# KI Chat URL
+VITE_AI_CHAT_URL="Ihre_Domain_hier"
+
 ```
 
 ### 4. Netzwerk- & Domainkonfiguration (`vite.config.js`)
