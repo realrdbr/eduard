@@ -27,7 +27,12 @@ import {
   WifiOff,
   Plus,
   Calendar,
-  BookOpen
+  BookOpen,
+  Battery,
+  BatteryLow,
+  BatteryMedium,
+  BatteryFull,
+  BatteryWarning
 } from 'lucide-react';
 
 interface RoomDisplay {
@@ -41,6 +46,7 @@ interface RoomDisplay {
   additional_info: string | null;
   update_schedule_id: number | null;
   primary_subject: string | null;
+  battery_level: number | null;
 }
 
 interface UpdateSchedule {
@@ -125,6 +131,22 @@ const DisplayManagement = () => {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     return lastSeenDate > twentyFourHoursAgo;
   };
+
+  const getBatteryIcon = (level: number | null) => {
+    if (level === null || level === undefined) return <Battery className="h-3.5 w-3.5 text-muted-foreground" />;
+    if (level <= 10) return <BatteryWarning className="h-3.5 w-3.5 text-destructive" />;
+    if (level <= 25) return <BatteryLow className="h-3.5 w-3.5 text-destructive" />;
+    if (level <= 60) return <BatteryMedium className="h-3.5 w-3.5 text-yellow-500" />;
+    return <BatteryFull className="h-3.5 w-3.5 text-green-500" />;
+  };
+
+  const getBatteryColor = (level: number | null): string => {
+    if (level === null || level === undefined) return 'text-muted-foreground';
+    if (level <= 25) return 'text-destructive';
+    if (level <= 60) return 'text-yellow-500';
+    return 'text-green-500';
+  };
+
 
   const handleToggleActive = async (display: RoomDisplay) => {
     try {
@@ -466,6 +488,16 @@ const DisplayManagement = () => {
                       </div>
                       <div className="text-xs text-muted-foreground">
                         Modus: {display.display_mode === 'info' ? 'Informationstext' : 'Stundenplan'}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          {getBatteryIcon(display.battery_level)}
+                          <span className={`text-xs font-medium ${getBatteryColor(display.battery_level)}`}>
+                            {display.battery_level !== null && display.battery_level !== undefined
+                              ? `${display.battery_level}%`
+                              : 'Unbekannt'}
+                          </span>
+                        </div>
                       </div>
                       {display.last_seen && (
                         <div className="text-xs text-muted-foreground">
