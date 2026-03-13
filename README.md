@@ -54,6 +54,9 @@ VITE_SUPABASE_PUBLISHABLE_KEY="Ihr_Anon_Key_hier"
 # KI Chat URL
 VITE_AI_CHAT_URL="Ihre_Domain_hier"
 
+# PiperTTS Server URL
+VITE_PIPER_TTS_URL="Ihre_TTS_IP_hier"
+
 ```
 Die im Projekt genutzte KI findet sich auf [Ollama](https://ollama.com/realrdbr/e.d.u.a.r.d.) <br>
 ### 4. Netzwerk- & Domainkonfiguration (`vite.config.js`)
