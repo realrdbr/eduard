@@ -10,15 +10,13 @@ import { Loader2, School, Eye, EyeOff, ShieldAlert } from 'lucide-react';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 
 // === Brute-Force Client-Side Lockout ===
-// Auch wenn die serverseitige RPC `verify_user_login_secure` Sperren erkennt,
-// erzwingen wir hier zusätzlich eine harte clientseitige Sperre, damit nach
-// X Fehlversuchen NICHTS mehr eingegeben oder abgeschickt werden kann.
 const LOCKOUT_KEY = 'eduard_auth_lockout';      // Timestamp (ms) bis wann gesperrt
 const ATTEMPTS_KEY = 'eduard_auth_attempts';    // Anzahl Fehlversuche im aktuellen Fenster
 const ATTEMPTS_WINDOW_KEY = 'eduard_auth_attempts_window'; // Start des Versuchsfensters
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 Minuten
 const ATTEMPTS_WINDOW_MS = 15 * 60 * 1000;  // Fehlversuche zählen 15 min lang
+const LOCKOUT_ERROR_PATTERN = /gesperrt|zu viele fehl(?:geschlagene)?\s*anmeldeversuche|zu viele fehlversuche|too many failed login attempts/i;
 
 const readLockoutUntil = (): number => {
   const v = localStorage.getItem(LOCKOUT_KEY);
@@ -123,7 +121,6 @@ const Auth = () => {
   }, [user, loading, profile, navigate]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (isLocked) return; // Eingabe während Sperre verhindern
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
@@ -132,16 +129,6 @@ const Auth = () => {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Harte Client-Sperre: Login wird gar nicht erst versucht
-    if (isLocked) {
-      toast({
-        variant: "destructive",
-        title: "Anmeldung gesperrt",
-        description: `Zu viele Fehlversuche. Bitte warte noch ${formatRemaining(remainingMs)} Minuten.`
-      });
-      return;
-    }
 
     if (!formData.username || !formData.password) {
       toast({
@@ -156,6 +143,23 @@ const Auth = () => {
     const { error, mustChangePassword } = await signInWithUsername(formData.username, formData.password);
 
     if (error) {
+      const isServerLockout = LOCKOUT_ERROR_PATTERN.test(error.message || '');
+
+      if (isServerLockout) {
+        const lockUntil = Date.now() + LOCKOUT_DURATION_MS;
+        setLockout(lockUntil);
+        setLockedUntil(lockUntil);
+        setNow(Date.now());
+        setFormData({ username: '', password: '' });
+        toast({
+          variant: "destructive",
+          title: "Anmeldung gesperrt",
+          description: error.message
+        });
+        setIsLoading(false);
+        return;
+      }
+
       // Fehlversuch zählen + ggf. sperren
       const { attempts, lockedUntil: newLock } = recordFailedAttempt();
 
@@ -213,7 +217,7 @@ const Auth = () => {
     );
   }
 
-  const inputsDisabled = isLocked || isLoading;
+  const inputsDisabled = isLoading;
 
   return (
     <>
