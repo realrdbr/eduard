@@ -10,7 +10,7 @@ import { Upload, FileSpreadsheet, AlertTriangle, CheckCircle, X, ArrowRight, Dow
 import { toast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import * as XLSX from 'xlsx';
+import readXlsxFile from 'read-excel-file';
 
 interface ImportRow {
   date: string;
@@ -120,16 +120,16 @@ const SubstitutionImport = ({ onImported }: SubstitutionImportProps) => {
           headers.forEach((h, i) => { row[h] = values[i] || ''; });
           return row;
         });
-      } else if (ext === 'xlsx' || ext === 'xls') {
-        const arrayBuffer = await file.arrayBuffer();
-        const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+      } else if (ext === 'xlsx') {
+        const rows = await readXlsxFile(file);
 
-        if (json.length < 2) throw new Error('Tabelle muss mindestens eine Kopfzeile und eine Datenzeile enthalten.');
+        if (rows.length < 2) throw new Error('Tabelle muss mindestens eine Kopfzeile und eine Datenzeile enthalten.');
 
-        headers = (json[0] as string[]).map(h => String(h || '').trim());
-        data = json.slice(1).filter(row => row.some(cell => cell !== null && cell !== undefined && cell !== '')).map(row => {
+        headers = rows[0].map(h => String(h || '').trim());
+        data = rows
+          .slice(1)
+          .filter(row => row.some(cell => cell !== null && cell !== undefined && String(cell).trim() !== ''))
+          .map(row => {
           const obj: Record<string, string> = {};
           headers.forEach((h, i) => { obj[h] = String(row[i] ?? '').trim(); });
           return obj;
@@ -411,7 +411,7 @@ const SubstitutionImport = ({ onImported }: SubstitutionImportProps) => {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".csv,.xlsx"
               className="hidden"
               onChange={handleFileSelect}
             />
