@@ -255,7 +255,16 @@ Antworte stets höflich, professionell und schulgerecht auf Deutsch.`;
               const dayMap: Record<number, string> = { 1:'monday', 2:'tuesday', 3:'wednesday', 4:'thursday', 5:'friday' };
               const col = dayMap[weekday] || 'monday';
 
-              const tables = ['Stundenplan_10b_A','Stundenplan_10c_A'];
+              const { data: tableData, error: tableErr } = await supabase.rpc('list_schedule_tables');
+              if (tableErr) throw tableErr;
+              const tables = (tableData || [])
+                .map((row: { table_name?: string }) => row.table_name)
+                .filter((tableName): tableName is string => Boolean(tableName));
+
+              if (tables.length === 0) {
+                result = { error: 'Keine Stundenplan-Tabellen gefunden.' };
+                break;
+              }
               const occupied: Record<number, Set<string>> = {};
 
               const parseCell = (cell?: string) => {
