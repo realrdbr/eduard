@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft, Calendar } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { fetchScheduleTables } from '@/lib/scheduleTables';
 
 interface ScheduleEntry {
   Stunde: number;
@@ -25,7 +25,7 @@ interface ClassSchedule {
 
 const Stundenplan = () => {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, sessionId } = useAuth();
   const [searchParams] = useSearchParams();
   const [classSchedules, setClassSchedules] = useState<ClassSchedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,53 +36,44 @@ const Stundenplan = () => {
       navigate('/auth');
       return;
     }
-    fetchAvailableSchedules();
-
-    // Handle scroll to specific class
-    const scrollToClass = searchParams.get('scrollTo');
-    if (scrollToClass) {
-      setTimeout(() => {
-        const element = document.getElementById(`schedule-${scrollToClass}`);
-        if (element) {
-          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 500);
+    if (sessionId) {
+      fetchAvailableSchedules();
     }
-  }, [user, navigate, searchParams]);
+  }, [user, sessionId, navigate]);
+
+  // Handle scroll to specific class after schedules are loaded
+  useEffect(() => {
+    const scrollToClass = searchParams.get('scrollTo');
+    if (scrollToClass && classSchedules.length > 0) {
+      const matchedClass = classSchedules.find(
+        (classSchedule) => classSchedule.className.trim().toLowerCase() === scrollToClass.trim().toLowerCase()
+      );
+
+      if (matchedClass) {
+        setSelectedClass(matchedClass.className);
+      }
+    }
+  }, [searchParams, classSchedules]);
 
   const fetchAvailableSchedules = async () => {
+    if (!sessionId) return;
+
     try {
-      const schedules: ClassSchedule[] = [];
-      
-      // Define known schedule tables and their class names
-      const knownTables = [
-        { tableName: 'Stundenplan_10b_A' as const, className: '10b' },
-        { tableName: 'Stundenplan_10c_A' as const, className: '10c' }
-      ];
-
-      for (const { tableName, className } of knownTables) {
-        try {
-          const { data, error } = await supabase
-            .from(tableName)
-            .select('*')
-            .order('Stunde');
-
-          if (!error && data) {
-            schedules.push({
-              className,
-              tableName,
-              schedule: data
-            });
-          }
-        } catch (tableError) {
-          console.warn(`Table ${tableName} not accessible:`, tableError);
-        }
-      }
+      const tables = await fetchScheduleTables(sessionId, true);
+      const schedules: ClassSchedule[] = tables.map(({ tableName, className, schedule }) => ({
+        className,
+        tableName,
+        schedule: schedule || [],
+      }));
 
       setClassSchedules(schedules);
-      if (!selectedClass && schedules.length > 0) {
-        setSelectedClass(schedules[0].className);
-      }
+
+      const requestedClass = searchParams.get('scrollTo')?.trim().toLowerCase();
+      const matchedClass = requestedClass
+        ? schedules.find((schedule) => schedule.className.trim().toLowerCase() === requestedClass)
+        : undefined;
+
+      setSelectedClass(matchedClass?.className || schedules[0]?.className || '');
     } catch (error) {
       console.error('Error fetching schedules:', error);
       toast({
@@ -244,7 +235,9 @@ const Stundenplan = () => {
           </CardHeader>
           <CardContent>
             {(() => {
-              const currentSchedule = classSchedules.find(cs => cs.className === selectedClass);
+              const currentSchedule = classSchedules.find(
+                (classSchedule) => classSchedule.className === selectedClass
+              );
               if (!currentSchedule) {
                 return <p className="text-muted-foreground">Kein Stundenplan verfügbar.</p>;
               }
