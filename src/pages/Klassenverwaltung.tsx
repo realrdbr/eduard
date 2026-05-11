@@ -5,35 +5,30 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { ArrowLeft, BookOpen, Users, Calendar, Settings, Plus, Edit, Trash2, Loader2 } from 'lucide-react';
+import { ArrowLeft, BookOpen, Users, Calendar, Settings, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 
 const Klassenverwaltung = () => {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, profile, sessionId } = useAuth();
   const [classes, setClasses] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateClass, setShowCreateClass] = useState(false);
-  const [showEditClass, setShowEditClass] = useState(false);
-  const [selectedClassName, setSelectedClassName] = useState('');
-  const [newClassName, setNewClassName] = useState('');
-  const [editClassName, setEditClassName] = useState('');
-  const [saving, setSaving] = useState(false);
 
-  const canEditClasses = profile?.permission_lvl && profile.permission_lvl >= 10;
+  const canManageUsers = profile?.permission_lvl && profile.permission_lvl >= 10;
 
   const fetchClasses = useCallback(async () => {
+    if (!sessionId) return;
     try {
-      const { data, error } = await supabase
-        .from('Klassen')
-        .select('name')
-        .order('name');
+      const { data, error } = await supabase.functions.invoke('schedule-tables', {
+        body: { sessionId }
+      });
 
-      if (error) throw error;
-      setClasses(data?.map(c => c.name) || []);
+      if (error || !data?.success) {
+        throw error || new Error(data?.error || 'Failed to load schedule tables');
+      }
+
+      const tableList: Array<{ tableName: string; className: string }> = data.tables || [];
+      setClasses(tableList.map(t => t.className).sort());
     } catch (error) {
       console.error('Error fetching classes:', error);
       toast({
@@ -44,7 +39,7 @@ const Klassenverwaltung = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!user) {
@@ -60,86 +55,10 @@ const Klassenverwaltung = () => {
       navigate('/');
       return;
     }
-    fetchClasses();
-  }, [user, profile, navigate, fetchClasses]);
-
-  const handleCreateClass = async () => {
-    const trimmed = newClassName.trim();
-    if (!trimmed) {
-      toast({ variant: "destructive", title: "Fehler", description: "Bitte geben Sie einen Klassennamen ein." });
-      return;
+    if (sessionId) {
+      fetchClasses();
     }
-    if (classes.includes(trimmed)) {
-      toast({ variant: "destructive", title: "Fehler", description: "Diese Klasse existiert bereits." });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const { error } = await supabase.from('Klassen').insert({ name: trimmed });
-      if (error) throw error;
-
-      setClasses(prev => [...prev, trimmed].sort());
-      setNewClassName('');
-      setShowCreateClass(false);
-      toast({ title: "Klasse erstellt", description: `Die Klasse "${trimmed}" wurde erfolgreich erstellt.` });
-    } catch (error: any) {
-      console.error('Error creating class:', error);
-      toast({ variant: "destructive", title: "Fehler", description: error.message || "Klasse konnte nicht erstellt werden." });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleEditClass = async () => {
-    const trimmed = editClassName.trim();
-    if (!trimmed) {
-      toast({ variant: "destructive", title: "Fehler", description: "Der Klassenname darf nicht leer sein." });
-      return;
-    }
-    if (trimmed === selectedClassName) {
-      setShowEditClass(false);
-      return;
-    }
-    if (classes.includes(trimmed)) {
-      toast({ variant: "destructive", title: "Fehler", description: "Eine Klasse mit diesem Namen existiert bereits." });
-      return;
-    }
-
-    setSaving(true);
-    try {
-      // Delete old, insert new (Klassen table has only name as PK)
-      const { error: delError } = await supabase.from('Klassen').delete().eq('name', selectedClassName);
-      if (delError) throw delError;
-
-      const { error: insError } = await supabase.from('Klassen').insert({ name: trimmed });
-      if (insError) throw insError;
-
-      setClasses(prev => prev.map(c => c === selectedClassName ? trimmed : c).sort());
-      setShowEditClass(false);
-      toast({ title: "Klasse umbenannt", description: `"${selectedClassName}" wurde in "${trimmed}" umbenannt.` });
-    } catch (error: any) {
-      console.error('Error editing class:', error);
-      toast({ variant: "destructive", title: "Fehler", description: error.message || "Klasse konnte nicht bearbeitet werden." });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteClass = async (className: string) => {
-    if (!window.confirm(`Möchten Sie die Klasse "${className}" wirklich löschen?`)) return;
-
-    try {
-      const { error } = await supabase.from('Klassen').delete().eq('name', className);
-      if (error) throw error;
-
-      setClasses(prev => prev.filter(c => c !== className));
-      toast({ title: "Klasse gelöscht", description: `Die Klasse "${className}" wurde gelöscht.` });
-    } catch (error: any) {
-      console.error('Error deleting class:', error);
-      toast({ variant: "destructive", title: "Fehler", description: error.message || "Klasse konnte nicht gelöscht werden." });
-    }
-  };
+  }, [user, profile, sessionId, navigate, fetchClasses]);
 
   const navigateToSchedule = (className: string) => {
     navigate(`/stundenplan?scrollTo=${className}`);
@@ -172,12 +91,6 @@ const Klassenverwaltung = () => {
                 </div>
               </div>
             </div>
-            {canEditClasses && (
-              <Button size="sm" onClick={() => setShowCreateClass(true)} className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 mr-2" />
-                Neue Klasse
-              </Button>
-            )}
           </div>
         </div>
       </header>
@@ -209,7 +122,7 @@ const Klassenverwaltung = () => {
                   </div>
                   <div>
                     <p className="text-xs sm:text-sm text-muted-foreground">Stundenpläne</p>
-                    <p className="text-xl sm:text-2xl font-bold">2</p>
+                    <p className="text-xl sm:text-2xl font-bold">{classes.length}</p>
                   </div>
                 </div>
               </CardContent>
@@ -236,9 +149,7 @@ const Klassenverwaltung = () => {
                           <BookOpen className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
                           Klasse {className}
                         </CardTitle>
-                        {(className === '10b' || className === '10c') && (
-                          <Badge variant="secondary" className="text-xs shrink-0">Stundenplan</Badge>
-                        )}
+                        <Badge variant="secondary" className="text-xs shrink-0">Stundenplan</Badge>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-0">
@@ -252,29 +163,6 @@ const Klassenverwaltung = () => {
                           <Calendar className="h-4 w-4 mr-1 sm:mr-2" />
                           <span className="text-xs sm:text-sm">Stundenplan</span>
                         </Button>
-                        {canEditClasses && (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedClassName(className);
-                                setEditClassName(className);
-                                setShowEditClass(true);
-                              }}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteClass(className)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </>
-                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -314,7 +202,7 @@ const Klassenverwaltung = () => {
                   <Users className="h-5 w-5 sm:h-6 sm:w-6 mb-1 sm:mb-2" />
                   Ankündigungen
                 </Button>
-                {canEditClasses && (
+                {canManageUsers && (
                   <Button
                     variant="outline"
                     className="h-16 sm:h-20 flex-col text-xs sm:text-sm"
@@ -329,66 +217,6 @@ const Klassenverwaltung = () => {
           </Card>
         </div>
       </main>
-
-      {/* Create Class Dialog */}
-      <Dialog open={showCreateClass} onOpenChange={setShowCreateClass}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Neue Klasse erstellen</DialogTitle>
-            <DialogDescription>Geben Sie den Namen der neuen Klasse ein.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="className">Klassenname</Label>
-              <Input
-                id="className"
-                value={newClassName}
-                onChange={(e) => setNewClassName(e.target.value)}
-                placeholder="z.B. 11a"
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateClass()}
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowCreateClass(false)} disabled={saving}>
-                Abbrechen
-              </Button>
-              <Button onClick={handleCreateClass} disabled={saving}>
-                {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Erstelle...</> : 'Erstellen'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Class Dialog */}
-      <Dialog open={showEditClass} onOpenChange={setShowEditClass}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Klasse umbenennen</DialogTitle>
-            <DialogDescription>Ändern Sie den Namen der Klasse "{selectedClassName}".</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="editClassName">Neuer Name</Label>
-              <Input
-                id="editClassName"
-                value={editClassName}
-                onChange={(e) => setEditClassName(e.target.value)}
-                placeholder="z.B. 11a"
-                onKeyDown={(e) => e.key === 'Enter' && handleEditClass()}
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowEditClass(false)} disabled={saving}>
-                Abbrechen
-              </Button>
-              <Button onClick={handleEditClass} disabled={saving}>
-                {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Speichere...</> : 'Speichern'}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
