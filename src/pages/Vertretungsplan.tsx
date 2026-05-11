@@ -18,6 +18,7 @@ import TeacherQuotaDashboard from '@/components/TeacherQuotaDashboard';
 import SubstitutionImport from '@/components/SubstitutionImport';
 import DebugVertretungsplan from '@/components/DebugVertretungsplan';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { fetchScheduleTables } from '@/lib/scheduleTables';
 
 interface SubstitutionEntry {
   id: string;
@@ -83,6 +84,7 @@ const Vertretungsplan = () => {
   const isMobile = useIsMobile();
   const [substitutions, setSubstitutions] = useState<SubstitutionEntry[]>([]);
   const [schedules, setSchedules] = useState<{ [key: string]: ScheduleEntry[] }>({});
+  const [availableClasses, setAvailableClasses] = useState<string[]>([]);
   const [showSubstitutionDialog, setShowSubstitutionDialog] = useState(false);
   const [selectedScheduleEntry, setSelectedScheduleEntry] = useState<{
     class: string;
@@ -107,7 +109,7 @@ const getInitialDate = () => {
     return toISODateLocal(now);
   };
   const [selectedDate, setSelectedDate] = useState(getInitialDate());
-  const [selectedClass, setSelectedClass] = useState('10b');
+  const [selectedClass, setSelectedClass] = useState('');
 
   const handlePrevWeek = () => {
     const cur = new Date(selectedDate + 'T00:00:00');
@@ -143,12 +145,20 @@ const getInitialDate = () => {
         description: "Sie haben keine Berechtigung für diese Seite."
       });
       navigate('/');
-      return;
     }
-    
-    fetchSchedules();
-    fetchSubstitutions();
-  }, [user, profile, navigate, selectedDate]);
+  }, [user, profile, navigate]);
+
+  useEffect(() => {
+    if (user && (!profile || profile.permission_lvl >= 1)) {
+      fetchSubstitutions();
+    }
+  }, [user, profile, selectedDate]);
+
+  useEffect(() => {
+    if (sessionId && (!profile || profile.permission_lvl >= 1)) {
+      fetchSchedules();
+    }
+  }, [sessionId, profile]);
 
   const fetchSubstitutions = async () => {
     try {
@@ -203,26 +213,40 @@ const getInitialDate = () => {
   };
 
   const fetchSchedules = async () => {
+    if (!sessionId) return;
+
     try {
-      const { data: schedule10b } = await supabase.from('Stundenplan_10b_A').select('*');
-      const { data: schedule10c } = await supabase.from('Stundenplan_10c_A').select('*');
-      
-      // Transform data to match ScheduleEntry interface
-      const transform = (data: any[]) => data.map(item => ({
-        period: item.Stunde,
-        monday: item.monday,
-        tuesday: item.tuesday,
-        wednesday: item.wednesday,
-        thursday: item.thursday,
-        friday: item.friday
-      }));
-      
-      setSchedules({
-        '10b': transform(schedule10b || []),
-        '10c': transform(schedule10c || [])
+      const tables = await fetchScheduleTables(sessionId, true);
+      const classNames = tables.map((table) => table.className);
+      const nextSchedules = tables.reduce<{ [key: string]: ScheduleEntry[] }>((acc, table) => {
+        acc[table.className] = (table.schedule || []).map((entry) => ({
+          period: entry.Stunde,
+          monday: entry.monday || '',
+          tuesday: entry.tuesday || '',
+          wednesday: entry.wednesday || '',
+          thursday: entry.thursday || '',
+          friday: entry.friday || '',
+        }));
+
+        return acc;
+      }, {});
+
+      setSchedules(nextSchedules);
+      setAvailableClasses(classNames);
+      setSelectedClass((currentClass) => {
+        if (currentClass && classNames.includes(currentClass)) {
+          return currentClass;
+        }
+
+        return classNames[0] || '';
       });
     } catch (error) {
       console.error('Error fetching schedules:', error);
+      toast({
+        variant: "destructive",
+        title: "Fehler",
+        description: "Stundenpläne konnten nicht geladen werden."
+      });
     }
   };
 
@@ -721,8 +745,11 @@ const getInitialDate = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="10b">10b</SelectItem>
-                      <SelectItem value="10c">10c</SelectItem>
+                      {availableClasses.map((className) => (
+                        <SelectItem key={className} value={className}>
+                          {className}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -769,14 +796,17 @@ const getInitialDate = () => {
               <CardContent className="pt-6">
                 <div className="space-y-4">
                   <div>
-                    <Label htmlFor="mobile-class">Klasse</Label>
+                   <Label htmlFor="mobile-class">Klasse</Label>
                     <Select value={selectedClass} onValueChange={setSelectedClass}>
                       <SelectTrigger className="w-full h-10">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="10b">10b</SelectItem>
-                        <SelectItem value="10c">10c</SelectItem>
+                        {availableClasses.map((className) => (
+                          <SelectItem key={className} value={className}>
+                            {className}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -820,75 +850,78 @@ const getInitialDate = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-5 w-5" />
-Stundenplan {selectedClass} - Woche {formatWeekRange(__weekStart)}
+                {selectedClass ? `Stundenplan ${selectedClass} - Woche ${formatWeekRange(__weekStart)}` : 'Stundenplan'}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse border border-border">
-                  <thead>
-                    <tr>
-                      <th className="border border-border p-2 bg-muted">Stunde</th>
-                      <th className="border border-border p-2 bg-muted">Montag</th>
-                      <th className="border border-border p-2 bg-muted">Dienstag</th>
-                      <th className="border border-border p-2 bg-muted">Mittwoch</th>
-                      <th className="border border-border p-2 bg-muted">Donnerstag</th>
-                      <th className="border border-border p-2 bg-muted">Freitag</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(schedules[selectedClass] || []).sort((a, b) => a.period - b.period).map((entry) => (
-                      <tr key={entry.period}>
-                        <td className="border border-border p-2 font-medium bg-muted">{entry.period}</td>
-                         {['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].map((day) => {
-                           const dayEntry = entry[day as keyof ScheduleEntry] as string;
-                           const parsedEntries = parseScheduleEntry(dayEntry);
-
-                           return (
-                             <td key={day} className="border border-border p-1">
-                               <div className="space-y-1">
-                                 {parsedEntries.map((parsed, idx) => {
-                                   // Check if there's a substitution for this specific lesson
-                                   const specificSubstitution = getSubstitution(selectedClass, day, entry.period, parsed.teacher, parsed.subject);
-                                   
-                                   return (
-                                     <div
-                                       key={idx}
-                                       className={`p-2 rounded cursor-pointer transition-colors min-h-[60px] flex flex-col justify-center ${
-                                         specificSubstitution
-                                           ? 'bg-destructive/20 text-destructive border border-destructive/50' 
-                                           : canEditSubstitutions
-                                           ? 'hover:bg-muted/50'
-                                           : 'hover:bg-muted/30'
-                                       }`}
-                                       onClick={() => canEditSubstitutions && handleCellClick(selectedClass, day, entry.period, parsed)}
-                                     >
-                                       <div className="text-sm font-medium">
-                                         {specificSubstitution ? (specificSubstitution.subject || parsed.subject) : parsed.subject}
-                                       </div>
-                                       <div className="text-xs text-muted-foreground">
-                                         {specificSubstitution ? (specificSubstitution.substituteTeacher || 'ENTFALL') : parsed.teacher}
-                                       </div>
-                                       <div className="text-xs text-muted-foreground">
-                                         {specificSubstitution ? (specificSubstitution.room || parsed.room) : parsed.room}
-                                       </div>
-                                       {specificSubstitution?.note && (
-                                         <div className="text-xs text-destructive mt-1">
-                                           {specificSubstitution.note}
-                                         </div>
-                                       )}
-                                     </div>
-                                   );
-                                 })}
-                               </div>
-                             </td>
-                           );
-                         })}
+              {selectedClass && (schedules[selectedClass] || []).length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse border border-border">
+                    <thead>
+                      <tr>
+                        <th className="border border-border p-2 bg-muted">Stunde</th>
+                        <th className="border border-border p-2 bg-muted">Montag</th>
+                        <th className="border border-border p-2 bg-muted">Dienstag</th>
+                        <th className="border border-border p-2 bg-muted">Mittwoch</th>
+                        <th className="border border-border p-2 bg-muted">Donnerstag</th>
+                        <th className="border border-border p-2 bg-muted">Freitag</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {(schedules[selectedClass] || []).sort((a, b) => a.period - b.period).map((entry) => (
+                        <tr key={entry.period}>
+                          <td className="border border-border p-2 font-medium bg-muted">{entry.period}</td>
+                           {['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].map((day) => {
+                             const dayEntry = entry[day as keyof ScheduleEntry] as string;
+                             const parsedEntries = parseScheduleEntry(dayEntry);
+
+                             return (
+                               <td key={day} className="border border-border p-1">
+                                 <div className="space-y-1">
+                                   {parsedEntries.map((parsed, idx) => {
+                                     const specificSubstitution = getSubstitution(selectedClass, day, entry.period, parsed.teacher, parsed.subject);
+                                     
+                                     return (
+                                       <div
+                                         key={idx}
+                                         className={`p-2 rounded cursor-pointer transition-colors min-h-[60px] flex flex-col justify-center ${
+                                           specificSubstitution
+                                             ? 'bg-destructive/20 text-destructive border border-destructive/50' 
+                                             : canEditSubstitutions
+                                             ? 'hover:bg-muted/50'
+                                             : 'hover:bg-muted/30'
+                                         }`}
+                                         onClick={() => canEditSubstitutions && handleCellClick(selectedClass, day, entry.period, parsed)}
+                                       >
+                                         <div className="text-sm font-medium">
+                                           {specificSubstitution ? (specificSubstitution.subject || parsed.subject) : parsed.subject}
+                                         </div>
+                                         <div className="text-xs text-muted-foreground">
+                                           {specificSubstitution ? (specificSubstitution.substituteTeacher || 'ENTFALL') : parsed.teacher}
+                                         </div>
+                                         <div className="text-xs text-muted-foreground">
+                                           {specificSubstitution ? (specificSubstitution.room || parsed.room) : parsed.room}
+                                         </div>
+                                         {specificSubstitution?.note && (
+                                           <div className="text-xs text-destructive mt-1">
+                                             {specificSubstitution.note}
+                                           </div>
+                                         )}
+                                       </div>
+                                     );
+                                   })}
+                                 </div>
+                               </td>
+                             );
+                           })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Kein Stundenplan verfügbar.</p>
+              )}
               {canEditSubstitutions && (
                 <p className="text-sm text-muted-foreground mt-4">
                   Klicken Sie auf eine Stunde, um eine Vertretung zu erstellen.
