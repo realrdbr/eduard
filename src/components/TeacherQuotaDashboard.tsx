@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { BarChart3, Download, AlertTriangle, ChevronDown, ChevronUp, Calendar, S
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from '@/hooks/use-toast';
+import { fetchScheduleTables } from '@/lib/scheduleTables';
 
 interface Teacher {
   shortened: string;
@@ -90,15 +91,7 @@ const TeacherQuotaDashboard = () => {
   const { monday, friday } = getWeekRange(weekDate);
   const isAdmin = (profile?.permission_lvl ?? 0) >= 10;
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
-
-  useEffect(() => {
-    if (globalLimit > 0) fetchWeeklyLoads();
-  }, [weekDate, globalLimit, teacherLimits]);
-
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       const { data: settingsData } = await supabase
         .from('substitution_settings' as any)
@@ -126,11 +119,13 @@ const TeacherQuotaDashboard = () => {
     } catch (err) {
       console.error('Error fetching settings:', err);
     }
-  };
+  }, []);
 
-  const getTeacherLimit = (shortened: string) => teacherLimits[shortened] ?? globalLimit;
+  const getTeacherLimit = useCallback((shortened: string) => teacherLimits[shortened] ?? globalLimit, [teacherLimits, globalLimit]);
 
-  const fetchWeeklyLoads = async () => {
+  const fetchWeeklyLoads = useCallback(async () => {
+    if (!sessionId) return;
+
     setLoading(true);
     try {
       const { data: teachers, error: tErr } = await supabase
@@ -138,11 +133,10 @@ const TeacherQuotaDashboard = () => {
         .select('shortened, "first name", "last name", subjects');
       if (tErr) throw tErr;
 
-      const tables = ['Stundenplan_10b_A', 'Stundenplan_10c_A'];
+      const scheduleTables = await fetchScheduleTables(sessionId, true);
       const scheduleData: Record<string, any[]> = {};
-      for (const table of tables) {
-        const { data: rows } = await supabase.from(table as 'Stundenplan_10b_A').select('*');
-        scheduleData[table] = rows || [];
+      for (const table of scheduleTables) {
+        scheduleData[table.tableName] = table.schedule || [];
       }
 
       const { data: weekSubs, error: subErr } = await supabase
@@ -212,7 +206,17 @@ const TeacherQuotaDashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [sessionId, monday, friday, getTeacherLimit]);
+
+  useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
+
+  useEffect(() => {
+    if (globalLimit > 0) {
+      fetchWeeklyLoads();
+    }
+  }, [weekDate, globalLimit, fetchWeeklyLoads]);
 
   const fetchTeacherDetails = async (teacher: Teacher) => {
     setSelectedTeacher(teacher);
