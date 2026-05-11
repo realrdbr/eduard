@@ -816,8 +816,21 @@ serve(async (req) => {
     console.log(`[substitution-engine] actor=${actor.username} action=${action}`);
     const tStart = Date.now();
 
+    const { data: tableData, error: tableErr } = await supabase.rpc('list_schedule_tables');
+    if (tableErr) {
+      console.error('[substitution-engine] list_schedule_tables failed:', tableErr);
+      return deny(500, 'Stundenplan-Tabellen konnten nicht geladen werden');
+    }
+
+    const tables = (tableData || [])
+      .map((row: { table_name?: string }) => row.table_name)
+      .filter((tableName): tableName is string => Boolean(tableName));
+
+    if (tables.length === 0) {
+      return deny(500, 'Keine Stundenplan-Tabellen gefunden');
+    }
+
     // PARALLEL: Load ALL base data in one Promise.all
-    const tables = ['Stundenplan_10b_A', 'Stundenplan_10c_A'];
     const [limitResult, teacherLimitsResult, teachersResult, ...scheduleResults] = await Promise.all([
       loadWeeklyLimit(supabase),
       loadTeacherLimits(supabase),
