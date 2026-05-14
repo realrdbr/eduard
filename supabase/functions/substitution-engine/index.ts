@@ -1090,6 +1090,41 @@ serve(async (req) => {
         }
       }
 
+      // Create class-targeted announcements for affected users
+      const dateSet = [...new Set(substitutions.map((s: any) => s.date || date).filter(Boolean))];
+      const dateLabel = dateSet
+        .map((d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d)
+          ? new Date(`${d}T12:00:00`).toLocaleDateString('de-DE')
+          : d
+        )
+        .join(', ');
+
+      const classNames = [...new Set(
+        substitutions
+          .map((s: any) => String(s.className || '').trim().toLowerCase())
+          .filter(Boolean)
+      )];
+
+      if (classNames.length > 0) {
+        const announcementRows = classNames.map((className) => ({
+          title: `Vertretungsplan aktualisiert – ${dateLabel}`,
+          content: substitutions
+            .filter((s: any) => String(s.className || '').trim().toLowerCase() === className)
+            .map((s: any) => `${className.toUpperCase()}, ${s.period}. Stunde: ${s.subject} → ${s.substituteTeacher || 'Entfall'}`)
+            .join('\n'),
+          author: 'E.D.U.A.R.D.',
+          priority: 'high',
+          target_class: className,
+          target_permission_level: 1,
+          created_by: null
+        }));
+
+        const { error: annErr } = await supabase.from('announcements').insert(announcementRows);
+        if (annErr) {
+          console.error('Announcement insert error:', annErr);
+        }
+      }
+
       return new Response(JSON.stringify({ success: true, created }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
