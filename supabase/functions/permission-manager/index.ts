@@ -117,7 +117,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    if ((actor.permission_lvl ?? 0) < 10) {
+    const isAdmin = (actor.permission_lvl ?? 0) >= 10;
+
+    if (!isAdmin && action !== 'get_permissions') {
       return new Response(
         JSON.stringify({ success: false, error: 'Insufficient permissions' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
@@ -179,13 +181,19 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'get_permissions') {
-      // Return both user and level permissions for UI consumption
-      const { data: userPerms, error: userPermsErr } = await supabase
-        .from('user_permissions')
-        .select('*');
-      const { data: levelPerms, error: levelPermsErr } = await supabase
-        .from('level_permissions')
-        .select('*');
+      // Return permissions for UI consumption:
+      // - admins get all permissions (for management UI)
+      // - non-admins get only effective scope for own permission checks
+      const userPermsQuery = isAdmin
+        ? supabase.from('user_permissions').select('*')
+        : supabase.from('user_permissions').select('*').eq('user_id', actorId);
+
+      const levelPermsQuery = isAdmin
+        ? supabase.from('level_permissions').select('*')
+        : supabase.from('level_permissions').select('*').eq('level', actor.permission_lvl ?? 0);
+
+      const [{ data: userPerms, error: userPermsErr }, { data: levelPerms, error: levelPermsErr }] =
+        await Promise.all([userPermsQuery, levelPermsQuery]);
 
       if (userPermsErr || levelPermsErr) {
         const err = userPermsErr || levelPermsErr;
