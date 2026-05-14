@@ -380,7 +380,7 @@ Antworte stets höflich, professionell und schulgerecht auf Deutsch.`;
               content: `${dateStrDE}, ${insertData.period}. Stunde: ${insertData.original_subject} bei ${insertData.original_teacher} → ${insertData.substitute_teacher} (Raum: ${insertData.substitute_room}).`,
               author: 'E.D.U.A.R.D.',
               priority: 'high',
-              target_class: insertData.class_name,
+              target_class: String(insertData.class_name || '').toLowerCase() || null,
               target_permission_level: 1,
               created_by: null,
             });
@@ -1372,22 +1372,46 @@ Antworte stets höflich, professionell und schulgerecht auf Deutsch.`;
             success = true;
           }
 
-          // Create announcement
-          const allDates = [...new Set(subs.map((s: any) => s.date || dateStr))];
-          const dateDE = allDates.map(d => new Date(d + 'T12:00:00').toLocaleDateString('de-DE')).join(', ');
-          const classes = [...new Set(subs.map((s: any) => (s.className || s.class_name || '').toUpperCase()))].join(', ');
-          
-          await supabase.from('announcements').insert({
-            title: `Vertretungsplan aktualisiert – ${dateDE}`,
-            content: subs.map((s: any) => 
-              `${(s.className || s.class_name || '').toUpperCase()}, ${s.period}. Stunde: ${s.subject} → ${s.substituteTeacher || 'Entfall'}`
-            ).join('\n'),
-            author: 'E.D.U.A.R.D.',
-            priority: 'high',
-            target_class: classes || null,
-            target_permission_level: 1,
-            created_by: null,
-          });
+          // Create announcement only for legacy direct-insert path.
+          // Engine-based confirmations create announcements in substitution-engine.
+          if (!engineUsed) {
+            const allDates = [...new Set(subs.map((s: any) => s.date || dateStr))];
+            const dateDE = allDates
+              .map((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(`${d}T12:00:00`).toLocaleDateString('de-DE') : d)
+              .join(', ');
+            const classNames = [...new Set(
+              subs
+                .map((s: any) => String(s.className || s.class_name || '').trim().toLowerCase())
+                .filter(Boolean)
+            )];
+
+            const announcementRows = classNames.length > 0
+              ? classNames.map((className) => ({
+                  title: `Vertretungsplan aktualisiert – ${dateDE}`,
+                  content: subs
+                    .filter((s: any) => String(s.className || s.class_name || '').trim().toLowerCase() === className)
+                    .map((s: any) => `${className.toUpperCase()}, ${s.period}. Stunde: ${s.subject} → ${s.substituteTeacher || s.substitute_teacher || 'Entfall'}`)
+                    .join('\n'),
+                  author: 'E.D.U.A.R.D.',
+                  priority: 'high',
+                  target_class: className,
+                  target_permission_level: 1,
+                  created_by: null,
+                }))
+              : [{
+                  title: `Vertretungsplan aktualisiert – ${dateDE}`,
+                  content: subs.map((s: any) =>
+                    `${String(s.className || s.class_name || '').toUpperCase()}, ${s.period}. Stunde: ${s.subject} → ${s.substituteTeacher || s.substitute_teacher || 'Entfall'}`
+                  ).join('\n'),
+                  author: 'E.D.U.A.R.D.',
+                  priority: 'high',
+                  target_class: null,
+                  target_permission_level: 1,
+                  created_by: null,
+                }];
+
+            await supabase.from('announcements').insert(announcementRows);
+          }
 
         } catch (e: any) {
           console.error('confirm_substitution error:', e);
