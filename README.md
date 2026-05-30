@@ -58,7 +58,7 @@ VITE_AI_CHAT_URL="Ihre_Domain_hier"
 VITE_PIPER_TTS_URL="Ihre_TTS_IP_hier"
 
 ```
-Die im Projekt genutzte KI findet sich auf [Ollama](https://ollama.com/realrdbr/e.d.u.a.r.d.) <br>
+Die im Projekt genutzte KI findet sich auf [Ollama](https://ollama.com/Redbear/e.d.u.a.r.d.) <br>
 ### 4. Netzwerk- & Domainkonfiguration (`vite.config.js`)
 
 Um die Plattform über eine spezifische Domain oder im Netzwerk erreichbar zu machen, passen Sie die `vite.config.js` an. Dies ist besonders wichtig für die TLS-Terminierung oder Proxies in Schulumgebungen.
